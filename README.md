@@ -153,7 +153,7 @@ O submenu `Nubank` é alimentado automaticamente durante a sincronização do Gm
 - Localiza a mensagem de fechamento da fatura Nubank.
 - Baixa e lê o PDF anexado ao e-mail.
 - Extrai data, estabelecimento, valor e parcela de cada compra identificada.
-- Exclui pagamentos de fatura, créditos, estornos, saldos reapresentados e linhas de resumo dos cálculos de compras.
+- Exclui pagamentos de fatura, créditos de atraso, créditos, estornos, reembolsos, descontos, abatimentos, saldos reapresentados e linhas de resumo dos cálculos de compras.
 - Separa automaticamente linhas do PDF que combinam uma compra com a coluna de pagamentos e mostra o ajuste na conciliação.
 - Categoriza as compras e gera métricas, gráficos e insights.
 - Permite abrir os quadrantes para detalhar as compras consideradas e ordenar a tabela por data, valor, estabelecimento ou categoria.
@@ -161,5 +161,6 @@ O submenu `Nubank` é alimentado automaticamente durante a sincronização do Gm
 - Permite ordenar a tabela também clicando diretamente nos cabeçalhos das colunas.
 - Salva as transações junto ao registro da fatura no cache local e no Firestore.
 - O GitHub Pages não usa cache offline persistente, garantindo que a versão atual do branch `main` seja carregada após uma atualização.
+- Audita automaticamente a diferença entre o valor final da fatura e as compras válidas em todos os meses sincronizados.
 
 Não é necessário importar arquivos manualmente. Após a primeira atualização desta funcionalidade, execute `Sincronizar` para reprocessar as faturas já encontradas no período configurado.

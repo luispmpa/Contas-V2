@@ -5,7 +5,7 @@ const OVERRIDES_KEY = "contasDomesticas.overrides.v1";
 const STANDARD_ACCOUNTS_KEY = "contasDomesticas.standardAccounts.v1";
 const VIEW_KEY = "contasDomesticas.view.v1";
 const THEME_KEY = "contas-theme";
-const APP_VERSION = "20260611-33";
+const APP_VERSION = "20260611-34";
 const MANUAL_RECURRENCE_HORIZON_MONTHS = 36;
 
 const GOOGLE_SCOPES = [
@@ -182,7 +182,7 @@ const NUBANK_CATEGORY_RULES = [
   { category: "Financeiro", regex: /\b(iof|juros|multa|encargo|anuidade|tarifa)\b/i },
 ];
 const NUBANK_STATEMENT_SUMMARY_REGEX =
-  /\b(?:total(?: da fatura| de compras)?|pagamentos?|fatura paga|credito recebido|ajuste a credito|saldo (?:anterior|em atraso|em aberto|devedor|financiado|remanescente|restante|total)|valor (?:em aberto|pendente|total)|fatura anterior|limite (?:disponivel|total)|subtotal|vencimento|melhor dia de compra|resumo da fatura|pagamento minimo|minimo da fatura|credito rotativo)\b/i;
+  /\b(?:total(?: da fatura| de compras)?|pagamentos?|fatura paga|credito(?:s)?(?: de atraso| recebido| na fatura| da fatura| por pagamento| de pagamento| rotativo)?|ajuste a credito|estorno|reembolso|cashback|desconto|abatimento|devolucao|cancelamento|saldo (?:anterior|em atraso|em aberto|devedor|financiado|remanescente|restante|total)|valor (?:em aberto|pendente|total)|fatura anterior|limite (?:disponivel|total)|subtotal|vencimento|melhor dia de compra|resumo da fatura|pagamento minimo|minimo da fatura)\b/i;
 const AUTOCOMPLETE_LIMIT = 12;
 
 const BILL_DOCUMENT_REGEX =
@@ -2291,7 +2291,7 @@ function parseNubankInvoiceTransactions(text, { dueDate = "", messageId = "" } =
     .filter(Boolean);
   const transactions = [];
   const datePattern = /^(\d{1,2})\s+(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\b/i;
-  const amountPattern = /(?:R\$\s*)?(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})(?!\d)/i;
+  const amountPattern = /(?:R\$\s*)?(-?(?:\d{1,3}(?:\.\d{3})*|\d+),\d{2}(?:\s*[-−–])?)(?!\d)/i;
 
   for (let index = 0; index < lines.length; index += 1) {
     const dateMatch = lines[index].match(datePattern);
@@ -2346,7 +2346,7 @@ function cleanNubankTransactionDescription(value) {
 }
 
 function isNubankInvoiceSummaryLine(value) {
-  return NUBANK_STATEMENT_SUMMARY_REGEX.test(normalizeText(value)) || /\b(?:fatura fechada|estorno)\b/i.test(normalizeText(value));
+  return NUBANK_STATEMENT_SUMMARY_REGEX.test(normalizeText(value)) || /\bfatura fechada\b/i.test(normalizeText(value));
 }
 
 function selectNubankPurchaseAmount(candidate, amountMatches) {
@@ -2367,7 +2367,7 @@ function selectNubankPurchaseAmount(candidate, amountMatches) {
 function isNubankPurchaseDescription(value) {
   const normalized = normalizeText(value);
   if (!normalized) return false;
-  return !NUBANK_STATEMENT_SUMMARY_REGEX.test(normalized) && !/\b(?:estorno|encargos da fatura)\b/.test(normalized);
+  return !NUBANK_STATEMENT_SUMMARY_REGEX.test(normalized) && !/\bencargos da fatura\b/.test(normalized);
 }
 
 function isNubankPurchaseTransaction(transaction) {
@@ -4253,6 +4253,8 @@ function renderNubankInsights(invoices, transactions) {
   const topMerchant = merchantTotals[0];
   const difference = roundCurrency(invoiceTotal - total);
   const insights = [];
+  const monthlyAudit = getNubankMonthlyReconciliation();
+  const inconsistentMonths = monthlyAudit.filter((item) => Math.abs(item.difference) >= 0.01);
 
   if (adjustments.length) {
     insights.push({
@@ -4266,6 +4268,16 @@ function renderNubankInsights(invoices, transactions) {
       icon: "badge-check",
       title: "Compras conciliadas com a fatura",
       text: `${formatCurrency(total)} em compras identificadas, igual ao valor final da fatura.`,
+    });
+  }
+  if (inconsistentMonths.length) {
+    insights.push({
+      icon: "scan-search",
+      title: `${inconsistentMonths.length} ${inconsistentMonths.length === 1 ? "mês requer" : "meses requerem"} revisão`,
+      text: `Diferenças restantes após remover pagamentos, créditos, saldos e abatimentos: ${inconsistentMonths
+        .slice(0, 3)
+        .map((item) => `${formatMonth(item.month)}: ${formatCurrency(Math.abs(item.difference))}`)
+        .join(" · ")}.`,
     });
   }
   if (previousTotal > 0) {
@@ -4300,7 +4312,6 @@ function renderNubankInsights(invoices, transactions) {
           : "As compras identificadas superam o valor final da fatura; podem existir pagamentos, créditos ou estornos ainda combinados aos registros.",
     });
   }
-
   els.nubankInsightsList.innerHTML = insights
     .slice(0, 5)
     .map(
@@ -4331,6 +4342,21 @@ function renderNubankCharts() {
   const transactions = getNubankTransactions();
   renderNubankEvolutionChart();
   renderNubankCategoryChart(transactions);
+}
+
+function getNubankMonthlyReconciliation() {
+  const invoices = getEffectiveRecords({ includeProofs: false }).filter((record) => record.sourceRuleId === "nubankInvoice");
+  const months = Array.from(new Set(invoices.map((invoice) => invoice.monthKey).filter(Boolean))).sort();
+  return months.map((month) => {
+    const invoiceTotal = sum(invoices.filter((invoice) => invoice.monthKey === month), "amount");
+    const purchasesTotal = sum(getNubankTransactions(month), "amount");
+    return {
+      month,
+      invoiceTotal,
+      purchasesTotal,
+      difference: roundCurrency(invoiceTotal - purchasesTotal),
+    };
+  });
 }
 
 function selectNubankChartMode(mode) {
@@ -5511,11 +5537,14 @@ function formatMimeType(mimeType = "") {
 
 function parseCurrencyInput(value) {
   if (typeof value === "number") return roundCurrency(value);
-  const normalized = String(value || "")
+  const source = String(value || "").trim();
+  const trailingNegative = /[-−–]\s*$/.test(source);
+  const normalized = source
     .replace(/[^\d,.-]/g, "")
+    .replace(/-+$/g, "")
     .replace(/\.(?=\d{3}(?:\D|$))/g, "")
     .replace(",", ".");
-  const parsed = Number(normalized);
+  const parsed = Number(`${trailingNegative && !normalized.startsWith("-") ? "-" : ""}${normalized}`);
   return Number.isFinite(parsed) ? roundCurrency(parsed) : NaN;
 }
 
