@@ -5,7 +5,7 @@ const OVERRIDES_KEY = "contasDomesticas.overrides.v1";
 const STANDARD_ACCOUNTS_KEY = "contasDomesticas.standardAccounts.v1";
 const VIEW_KEY = "contasDomesticas.view.v1";
 const THEME_KEY = "contas-theme";
-const APP_VERSION = "20260611-29";
+const APP_VERSION = "20260611-30";
 const MANUAL_RECURRENCE_HORIZON_MONTHS = 36;
 
 const GOOGLE_SCOPES = [
@@ -2291,7 +2291,8 @@ function parseNubankInvoiceTransactions(text, { dueDate = "", messageId = "" } =
 
     const candidate = candidateLines.join(" ");
     const amountMatches = Array.from(candidate.matchAll(new RegExp(amountPattern.source, "gi")));
-    const amountMatch = amountMatches.at(-1);
+    const amountSelection = selectNubankPurchaseAmount(candidate, amountMatches);
+    const amountMatch = amountSelection.amountMatch;
     if (!amountMatch) continue;
 
     const amount = parseCurrencyInput(amountMatch[1]);
@@ -2312,6 +2313,8 @@ function parseNubankInvoiceTransactions(text, { dueDate = "", messageId = "" } =
       amount: roundCurrency(amount),
       category: classifyNubankTransaction(description),
       installment,
+      linkedPaymentAmount: amountSelection.linkedPaymentAmount,
+      parserAdjustment: amountSelection.linkedPaymentAmount ? "split-payment-column" : "",
     });
   }
 
@@ -2331,6 +2334,21 @@ function isNubankInvoiceSummaryLine(value) {
   return /\b(total(?: da fatura| de compras)?|pagamento|limite disponivel|limite total|saldo anterior|fatura fechada|valor total|subtotal|vencimento|melhor dia de compra|resumo da fatura|credito recebido|estorno|ajuste a credito)\b/i.test(
     value,
   );
+}
+
+function selectNubankPurchaseAmount(candidate, amountMatches) {
+  const paymentIndex = candidate.search(/\bpagamentos?\b/i);
+  if (paymentIndex >= 0) {
+    const purchaseMatch = amountMatches.filter((match) => Number(match.index) < paymentIndex).at(-1);
+    const paymentMatch = amountMatches.filter((match) => Number(match.index) > paymentIndex).at(-1);
+    if (purchaseMatch && paymentMatch) {
+      return {
+        amountMatch: purchaseMatch,
+        linkedPaymentAmount: parseCurrencyInput(paymentMatch[1]),
+      };
+    }
+  }
+  return { amountMatch: amountMatches.at(-1), linkedPaymentAmount: 0 };
 }
 
 function isNubankPurchaseDescription(value) {
@@ -3331,16 +3349,42 @@ function sanitizeRecordList(records, { includeProofs = true } = {}) {
 
 function sanitizeNubankTransactions(transactions) {
   return (transactions || [])
-    .map((transaction, index) => ({
-      id: String(transaction?.id || `nubank-transaction-${index + 1}`),
-      date: String(transaction?.date || "").slice(0, 10),
-      merchant: String(transaction?.merchant || transaction?.description || "Compra não identificada").trim(),
-      description: String(transaction?.description || transaction?.merchant || "").trim(),
-      amount: roundCurrency(transaction?.amount || 0),
-      category: String(transaction?.category || "Outros"),
-      installment: String(transaction?.installment || ""),
-    }))
+    .map((transaction, index) =>
+      repairNubankTransaction({
+        id: String(transaction?.id || `nubank-transaction-${index + 1}`),
+        date: String(transaction?.date || "").slice(0, 10),
+        merchant: String(transaction?.merchant || transaction?.description || "Compra não identificada").trim(),
+        description: String(transaction?.description || transaction?.merchant || "").trim(),
+        amount: roundCurrency(transaction?.amount || 0),
+        category: String(transaction?.category || "Outros"),
+        installment: String(transaction?.installment || ""),
+        linkedPaymentAmount: roundCurrency(transaction?.linkedPaymentAmount || 0),
+        parserAdjustment: String(transaction?.parserAdjustment || ""),
+      }),
+    )
     .filter((transaction) => transaction.date && transaction.merchant && isNubankPurchaseTransaction(transaction));
+}
+
+function repairNubankTransaction(transaction) {
+  const source = `${transaction.description || transaction.merchant || ""}`.trim();
+  const combinedMatch = source.match(
+    /^(.*?)(?:R\$\s*|BRL\s*)?((?:\d{1,3}(?:\.\d{3})*|\d+),\d{2})\s+pagamentos?\b/i,
+  );
+  if (!combinedMatch) return transaction;
+
+  const purchaseAmount = parseCurrencyInput(combinedMatch[2]);
+  const merchant = cleanNubankTransactionDescription(combinedMatch[1]);
+  if (!merchant || !Number.isFinite(purchaseAmount) || purchaseAmount <= 0 || purchaseAmount >= transaction.amount) return transaction;
+
+  return {
+    ...transaction,
+    merchant,
+    description: merchant,
+    amount: purchaseAmount,
+    linkedPaymentAmount: transaction.amount,
+    parserAdjustment: "split-payment-column",
+    category: classifyNubankTransaction(merchant),
+  };
 }
 
 function normalizeRecordStatus(record) {
@@ -3979,6 +4023,7 @@ function getNubankTransactions(monthKey = state.selectedMonth) {
 function renderNubankDashboard() {
   const invoices = getNubankInvoiceRecords();
   const transactions = getNubankTransactions();
+  const adjustments = getNubankParserAdjustments(transactions);
   const total = sum(transactions, "amount");
   const average = transactions.length ? total / transactions.length : 0;
   const largest = [...transactions].sort((a, b) => b.amount - a.amount)[0];
@@ -3990,7 +4035,7 @@ function renderNubankDashboard() {
     ? `${formatMonth(state.selectedMonth)} · ${formatCurrency(invoiceTotal)} na fatura · vencimento ${formatDate(invoices[0].dueDate)}`
     : `${formatMonth(state.selectedMonth)} · nenhuma fatura Nubank sincronizada`;
   els.nubankMetricTotal.textContent = formatCurrency(total);
-  els.nubankMetricTotalHint.textContent = `${transactions.length} ${transactions.length === 1 ? "compra identificada" : "compras identificadas"}`;
+  els.nubankMetricTotalHint.textContent = `${transactions.length} ${transactions.length === 1 ? "compra identificada" : "compras identificadas"}${adjustments.length ? ` · ${adjustments.length} conciliada${adjustments.length === 1 ? "" : "s"}` : ""}`;
   els.nubankMetricAverage.textContent = formatCurrency(average);
   els.nubankMetricAverageHint.textContent = transactions.length ? `Média de ${transactions.length} compras` : "Por compra";
   els.nubankMetricLargest.textContent = formatCurrency(largest?.amount || 0);
@@ -4069,8 +4114,19 @@ function getNubankRemainingInstallments(transaction) {
   return match ? Math.max(0, Number(match[2]) - Number(match[1])) : 0;
 }
 
+function getNubankParserAdjustments(transactions) {
+  return transactions
+    .filter((transaction) => transaction.parserAdjustment === "split-payment-column" && transaction.linkedPaymentAmount > transaction.amount)
+    .map((transaction) => ({
+      ...transaction,
+      removedAmount: roundCurrency(transaction.linkedPaymentAmount - transaction.amount),
+    }));
+}
+
 function openNubankMetricDetail(kind) {
   const transactions = getNubankTransactions();
+  const adjustments = getNubankParserAdjustments(transactions);
+  const removedAmount = sum(adjustments, "removedAmount");
   const total = sum(transactions, "amount");
   const average = transactions.length ? total / transactions.length : 0;
   const largest = [...transactions].sort((a, b) => b.amount - a.amount)[0];
@@ -4081,6 +4137,7 @@ function openNubankMetricDetail(kind) {
   let summary = [
     { label: "Total", value: formatCurrency(total) },
     { label: "Compras", value: String(transactions.length) },
+    ...(removedAmount > 0 ? [{ label: "Pagamentos separados", value: formatCurrency(removedAmount) }] : []),
   ];
 
   if (kind === "average") {
@@ -4145,6 +4202,8 @@ function renderNubankInsights(invoices, transactions) {
 
   const total = sum(transactions, "amount");
   const invoiceTotal = sum(invoices, "amount");
+  const adjustments = getNubankParserAdjustments(transactions);
+  const removedAmount = sum(adjustments, "removedAmount");
   const previousMonth = addMonthsToMonthKey(state.selectedMonth, -1);
   const previousTotal = sum(getNubankTransactions(previousMonth), "amount");
   const categoryTotals = aggregateNubankTransactions(transactions, "category");
@@ -4154,6 +4213,20 @@ function renderNubankInsights(invoices, transactions) {
   const difference = roundCurrency(invoiceTotal - total);
   const insights = [];
 
+  if (adjustments.length) {
+    insights.push({
+      icon: "split",
+      title: `${formatCurrency(removedAmount)} separados de compras`,
+      text: `${adjustments.length} ${adjustments.length === 1 ? "linha combinava" : "linhas combinavam"} compra e pagamento. Ex.: ${adjustments[0].merchant}: ${formatCurrency(adjustments[0].linkedPaymentAmount)} corrigido para ${formatCurrency(adjustments[0].amount)}.`,
+    });
+  }
+  if (Math.abs(difference) < 0.01) {
+    insights.push({
+      icon: "badge-check",
+      title: "Compras conciliadas com a fatura",
+      text: `${formatCurrency(total)} em compras identificadas, igual ao valor final da fatura.`,
+    });
+  }
   if (previousTotal > 0) {
     const change = (total - previousTotal) / previousTotal;
     insights.push({
@@ -4179,8 +4252,11 @@ function renderNubankInsights(invoices, transactions) {
   if (Math.abs(difference) >= 0.01) {
     insights.push({
       icon: "circle-alert",
-      title: `${formatCurrency(Math.abs(difference))} ainda sem detalhamento`,
-      text: difference > 0 ? "Parte da fatura não foi reconhecida como compra." : "As compras extraídas superam o total detectado da fatura.",
+      title: `${formatCurrency(Math.abs(difference))} de diferença na conciliação`,
+      text:
+        difference > 0
+          ? "O valor final da fatura supera as compras identificadas; pode haver encargos, ajustes ou compras ainda não reconhecidas."
+          : "As compras identificadas superam o valor final da fatura; podem existir pagamentos, créditos ou estornos ainda combinados aos registros.",
     });
   }
 

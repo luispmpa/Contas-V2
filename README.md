@@ -154,6 +154,7 @@ O submenu `Nubank` é alimentado automaticamente durante a sincronização do Gm
 - Baixa e lê o PDF anexado ao e-mail.
 - Extrai data, estabelecimento, valor e parcela de cada compra identificada.
 - Exclui pagamentos de fatura, créditos, estornos e linhas de resumo dos cálculos de compras.
+- Separa automaticamente linhas do PDF que combinam uma compra com a coluna de pagamentos e mostra o ajuste na conciliação.
 - Categoriza as compras e gera métricas, gráficos e insights.
 - Permite abrir os quadrantes para detalhar as compras consideradas e ordenar a tabela por data, valor, estabelecimento ou categoria.
 - Salva as transações junto ao registro da fatura no cache local e no Firestore.
