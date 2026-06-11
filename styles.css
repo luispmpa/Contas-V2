@@ -299,6 +299,45 @@ textarea:focus {
   font-size: 0.86rem;
 }
 
+.dashboard-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.dashboard-nav-button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.78);
+  font-weight: 800;
+}
+
+.dashboard-nav-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.dashboard-nav-button.is-active {
+  color: #fff;
+  border-color: var(--teal);
+  background: var(--teal);
+}
+
+.dashboard-nav-button.nubank.is-active {
+  border-color: #820ad1;
+  background: #820ad1;
+}
+
+.dashboard-view[hidden] {
+  display: none;
+}
+
 .status-strip div {
   display: flex;
   align-items: center;
@@ -387,6 +426,13 @@ textarea:focus {
   border-top-color: var(--violet);
 }
 
+.metric-card.nubank-total,
+.metric-card.nubank-average,
+.metric-card.nubank-largest,
+.metric-card.nubank-installments {
+  border-top-color: #820ad1;
+}
+
 .metric-card span {
   color: var(--muted);
   font-size: 0.82rem;
@@ -429,6 +475,117 @@ textarea:focus {
 
 .content-grid {
   grid-template-columns: minmax(0, 1fr) 300px;
+}
+
+.nubank-hero {
+  min-height: 116px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px;
+  margin-bottom: 12px;
+  color: #fff;
+  border-color: #820ad1;
+  background: linear-gradient(135deg, #820ad1, #5b0796);
+}
+
+.nubank-hero h2 {
+  margin: 4px 0 6px;
+  font-size: clamp(1.45rem, 3vw, 2.15rem);
+}
+
+.nubank-hero p {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.nubank-kicker {
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nubank-hero-mark {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.nubank-hero-mark svg {
+  width: 31px;
+  height: 31px;
+}
+
+.nubank-category-pill {
+  display: inline-flex;
+  padding: 4px 8px;
+  color: #6409a2;
+  border-radius: 999px;
+  background: #f0ddfb;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.nubank-insights-panel {
+  align-self: start;
+}
+
+.nubank-insights-list {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px 16px;
+}
+
+.nubank-insight {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid #e7d3f4;
+  border-radius: var(--radius);
+  background: #fcf8ff;
+}
+
+.nubank-insight > svg {
+  width: 19px;
+  height: 19px;
+  color: #820ad1;
+  margin: 2px auto 0;
+}
+
+.nubank-insight div {
+  display: grid;
+  gap: 3px;
+}
+
+.nubank-insight strong {
+  font-size: 0.85rem;
+}
+
+.nubank-insight span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.nubank-table-panel th:first-child,
+.nubank-table-panel td:first-child {
+  width: 104px;
+}
+
+.nubank-table-panel th:nth-child(4),
+.nubank-table-panel td:nth-child(4) {
+  width: 92px;
+}
+
+.nubank-table-panel th:last-child,
+.nubank-table-panel td:last-child {
+  width: 130px;
 }
 
 .panel {
@@ -1767,6 +1924,34 @@ td.numeric {
     font-size: 0.78rem;
   }
 
+  .dashboard-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .dashboard-nav-button {
+    justify-content: center;
+    min-height: 44px;
+    padding: 0 8px;
+  }
+
+  .nubank-hero {
+    min-height: 100px;
+    padding: 15px;
+  }
+
+  .nubank-hero-mark {
+    width: 48px;
+    height: 48px;
+  }
+
+  .nubank-hero-mark svg {
+    width: 24px;
+    height: 24px;
+  }
+
   .status-strip div {
     min-width: 0;
   }
@@ -1919,6 +2104,30 @@ td.numeric {
 
   .table-panel tbody td:nth-child(5) {
     font-size: 1rem;
+  }
+
+  .nubank-table-panel tbody td:first-child {
+    display: grid;
+    padding-bottom: 0;
+    border-bottom: 0;
+    text-align: right;
+    font-weight: 400;
+  }
+
+  .nubank-table-panel tbody td:first-child::before {
+    display: block;
+  }
+
+  .nubank-table-panel tbody td:nth-child(2) {
+    display: block;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+    font-weight: 800;
+    text-align: left;
+  }
+
+  .nubank-table-panel tbody td:nth-child(2)::before {
+    display: none;
   }
 
   .empty-state {

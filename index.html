@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Contas domésticas</title>
-    <link rel="stylesheet" href="./styles.css?v=20260610-27" />
+    <link rel="stylesheet" href="./styles.css?v=20260611-28" />
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
@@ -51,6 +51,17 @@
         </div>
       </header>
 
+      <nav class="dashboard-nav" aria-label="Dashboards">
+        <button class="dashboard-nav-button is-active" type="button" data-dashboard-view="household" aria-selected="true">
+          <i data-lucide="home"></i>
+          Visão geral
+        </button>
+        <button class="dashboard-nav-button nubank" type="button" data-dashboard-view="nubank" aria-selected="false">
+          <i data-lucide="credit-card"></i>
+          Nubank
+        </button>
+      </nav>
+
       <main>
         <section class="status-strip" aria-live="polite">
           <div>
@@ -67,6 +78,7 @@
           </div>
         </section>
 
+        <div class="dashboard-view is-active" data-dashboard-panel="household">
         <section class="metrics-grid" aria-label="Resumo financeiro">
           <article class="metric-card total is-clickable" id="metricMonthCard" role="button" tabindex="0" title="Detalhar total do mês">
             <span>Total do mês</span>
@@ -237,6 +249,120 @@
             </div>
           </aside>
         </section>
+        </div>
+
+        <div class="dashboard-view" data-dashboard-panel="nubank" hidden>
+          <section class="nubank-hero panel">
+            <div>
+              <span class="nubank-kicker">Fatura Nubank</span>
+              <h2>Compras e insights</h2>
+              <p id="nubankInvoiceCaption">Sincronize para analisar automaticamente o PDF da fatura.</p>
+            </div>
+            <div class="nubank-hero-mark" aria-hidden="true">
+              <i data-lucide="credit-card"></i>
+            </div>
+          </section>
+
+          <section class="metrics-grid nubank-metrics" aria-label="Resumo da fatura Nubank">
+            <article class="metric-card nubank-total">
+              <span>Compras identificadas</span>
+              <strong id="nubankMetricTotal">R$ 0,00</strong>
+              <small id="nubankMetricTotalHint">Nenhuma compra extraída</small>
+            </article>
+            <article class="metric-card nubank-average">
+              <span>Ticket médio</span>
+              <strong id="nubankMetricAverage">R$ 0,00</strong>
+              <small id="nubankMetricAverageHint">Por compra</small>
+            </article>
+            <article class="metric-card nubank-largest">
+              <span>Maior compra</span>
+              <strong id="nubankMetricLargest">R$ 0,00</strong>
+              <small id="nubankMetricLargestHint">Sem dados</small>
+            </article>
+            <article class="metric-card nubank-installments">
+              <span>Compras parceladas</span>
+              <strong id="nubankMetricInstallments">R$ 0,00</strong>
+              <small id="nubankMetricInstallmentsHint">Nenhuma parcela identificada</small>
+            </article>
+          </section>
+
+          <section class="split-layout nubank-charts">
+            <article class="panel chart-panel wide">
+              <div class="panel-header">
+                <div>
+                  <h2>Gastos ao longo da fatura</h2>
+                  <p>Compras agrupadas por dia</p>
+                </div>
+              </div>
+              <div class="chart-frame">
+                <canvas id="nubankDailyChart"></canvas>
+              </div>
+            </article>
+            <article class="panel chart-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Categorias Nubank</h2>
+                  <p>Distribuição das compras identificadas</p>
+                </div>
+              </div>
+              <div class="chart-frame square">
+                <canvas id="nubankCategoryChart"></canvas>
+              </div>
+            </article>
+          </section>
+
+          <section class="content-grid nubank-content-grid">
+            <article class="panel table-panel nubank-table-panel">
+              <div class="panel-header table-header">
+                <div>
+                  <h2>Compras da fatura</h2>
+                  <p id="nubankTableCaption">Nenhuma compra identificada</p>
+                </div>
+                <div class="table-tools">
+                  <label class="filter-control">
+                    <span>Categoria</span>
+                    <select id="nubankCategoryFilter">
+                      <option value="all">Todas</option>
+                    </select>
+                  </label>
+                  <label class="filter-control search">
+                    <span>Busca</span>
+                    <input id="nubankSearchInput" type="search" autocomplete="off" placeholder="Estabelecimento..." />
+                  </label>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Estabelecimento</th>
+                      <th>Categoria</th>
+                      <th>Parcela</th>
+                      <th class="numeric">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody id="nubankTransactionsBody"></tbody>
+                </table>
+                <div class="empty-state" id="nubankEmptyState">
+                  <i data-lucide="receipt-text"></i>
+                  <strong>Nenhuma compra encontrada</strong>
+                  <span>Sincronize para ler automaticamente o PDF da fatura Nubank.</span>
+                </div>
+              </div>
+            </article>
+
+            <aside class="panel nubank-insights-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Insights</h2>
+                  <p>Destaques automáticos da fatura</p>
+                </div>
+              </div>
+              <div class="nubank-insights-list" id="nubankInsightsList"></div>
+            </aside>
+          </section>
+        </div>
       </main>
     </div>
 
@@ -863,7 +989,7 @@
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-    <script src="./config.js?v=20260610-27"></script>
-    <script type="module" src="./src/app.js?v=20260610-27"></script>
+    <script src="./config.js?v=20260611-28"></script>
+    <script type="module" src="./src/app.js?v=20260611-28"></script>
   </body>
 </html>

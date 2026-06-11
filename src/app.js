@@ -3,7 +3,7 @@ const RECORDS_KEY = "contasDomesticas.records.v1";
 const DRIVE_KEY = "contasDomesticas.drive.v1";
 const OVERRIDES_KEY = "contasDomesticas.overrides.v1";
 const STANDARD_ACCOUNTS_KEY = "contasDomesticas.standardAccounts.v1";
-const APP_VERSION = "20260610-27";
+const APP_VERSION = "20260611-28";
 const MANUAL_RECURRENCE_HORIZON_MONTHS = 36;
 
 const GOOGLE_SCOPES = [
@@ -152,6 +152,33 @@ const STATUS_LABELS = {
 };
 
 const COLOR_SET = ["#16836e", "#356ac3", "#c95645", "#bd7a16", "#7257a6", "#2b8aa0", "#697338"];
+const NUBANK_COLOR_SET = ["#820ad1", "#b24bf3", "#5c16a4", "#d78aff", "#3f0a75", "#a568d4", "#6d3a91"];
+const NUBANK_MONTHS = {
+  jan: 0,
+  fev: 1,
+  mar: 2,
+  abr: 3,
+  mai: 4,
+  jun: 5,
+  jul: 6,
+  ago: 7,
+  set: 8,
+  out: 9,
+  nov: 10,
+  dez: 11,
+};
+const NUBANK_CATEGORY_RULES = [
+  { category: "Alimentação", regex: /\b(ifood|restaurante|lanch|pizza|burger|mcdonald|cafe|cafeteria|padaria|delivery|food)\b/i },
+  { category: "Mercado", regex: /\b(mercado|supermercado|carrefour|z ?affari|assun|atacad|hortifruti|rissul|nacional)\b/i },
+  { category: "Transporte", regex: /\b(uber|99app|cabify|posto|combust|shell|ipiranga|estacion|pedagio|sem parar)\b/i },
+  { category: "Saúde", regex: /\b(farmacia|drogaria|panvel|raia|drogasil|hospital|clinica|laboratorio|medic)\b/i },
+  { category: "Assinaturas", regex: /\b(netflix|spotify|amazon prime|prime video|youtube|google one|icloud|apple\.com|disney|hbo|max\.com)\b/i },
+  { category: "Compras", regex: /\b(amazon|mercado livre|shopee|magalu|magazine|renner|riachuelo|centauro|loja|store)\b/i },
+  { category: "Casa", regex: /\b(leroy|tok.?stok|madeira|casa|moveis|construc|ferragem)\b/i },
+  { category: "Lazer", regex: /\b(cinema|ingresso|show|teatro|game|steam|playstation|xbox|livraria)\b/i },
+  { category: "Educação", regex: /\b(escola|curso|udemy|alura|faculdade|universidade|livro)\b/i },
+  { category: "Financeiro", regex: /\b(iof|juros|multa|encargo|anuidade|tarifa)\b/i },
+];
 const AUTOCOMPLETE_LIMIT = 12;
 
 const BILL_DOCUMENT_REGEX =
@@ -164,6 +191,8 @@ const SERVICE_NOTICE_REGEX =
   /\b(d[eé]bito autom[aá]tico da fatura ativado|ativado com sucesso|nucel|dados extras|empr[eé]stimo pessoal|informe de rendimentos)\b/i;
 
 const els = {
+  dashboardNavButtons: Array.from(document.querySelectorAll("[data-dashboard-view]")),
+  dashboardPanels: Array.from(document.querySelectorAll("[data-dashboard-panel]")),
   monthSelect: document.querySelector("#monthSelect"),
   syncButton: document.querySelector("#syncButton"),
   exportButton: document.querySelector("#exportButton"),
@@ -210,6 +239,23 @@ const els = {
   evolutionChart: document.querySelector("#evolutionChart"),
   categoryChart: document.querySelector("#categoryChart"),
   chartRangeSelect: document.querySelector("#chartRangeSelect"),
+  nubankInvoiceCaption: document.querySelector("#nubankInvoiceCaption"),
+  nubankMetricTotal: document.querySelector("#nubankMetricTotal"),
+  nubankMetricTotalHint: document.querySelector("#nubankMetricTotalHint"),
+  nubankMetricAverage: document.querySelector("#nubankMetricAverage"),
+  nubankMetricAverageHint: document.querySelector("#nubankMetricAverageHint"),
+  nubankMetricLargest: document.querySelector("#nubankMetricLargest"),
+  nubankMetricLargestHint: document.querySelector("#nubankMetricLargestHint"),
+  nubankMetricInstallments: document.querySelector("#nubankMetricInstallments"),
+  nubankMetricInstallmentsHint: document.querySelector("#nubankMetricInstallmentsHint"),
+  nubankDailyChart: document.querySelector("#nubankDailyChart"),
+  nubankCategoryChart: document.querySelector("#nubankCategoryChart"),
+  nubankCategoryFilter: document.querySelector("#nubankCategoryFilter"),
+  nubankSearchInput: document.querySelector("#nubankSearchInput"),
+  nubankTransactionsBody: document.querySelector("#nubankTransactionsBody"),
+  nubankTableCaption: document.querySelector("#nubankTableCaption"),
+  nubankEmptyState: document.querySelector("#nubankEmptyState"),
+  nubankInsightsList: document.querySelector("#nubankInsightsList"),
   searchResultsDialog: document.querySelector("#searchResultsDialog"),
   searchResultsTitle: document.querySelector("#searchResultsTitle"),
   searchResultsCaption: document.querySelector("#searchResultsCaption"),
@@ -315,6 +361,7 @@ const state = {
   overrides: readJSON(OVERRIDES_KEY, {}),
   standardAccounts: normalizeStandardAccounts(readJSON(STANDARD_ACCOUNTS_KEY, [])),
   selectedMonth: "",
+  activeDashboard: "household",
   selectedRecordId: "",
   googleAccessToken: "",
   googleTokenClient: null,
@@ -325,6 +372,8 @@ const state = {
   charts: {
     evolution: null,
     category: null,
+    nubankDaily: null,
+    nubankCategory: null,
   },
   filters: {
     status: "all",
@@ -334,6 +383,10 @@ const state = {
   searchOptions: [],
   auditVisible: false,
   chartRange: "12",
+  nubankFilters: {
+    category: "all",
+    search: "",
+  },
   isSyncing: false,
   settingsTab: "integrations",
   editingManualRecordId: "",
@@ -364,6 +417,9 @@ function init() {
 
 function bindEvents() {
   window.matchMedia("(max-width: 760px)").addEventListener("change", renderCharts);
+  els.dashboardNavButtons.forEach((button) => {
+    button.addEventListener("click", () => selectDashboard(button.dataset.dashboardView));
+  });
   els.syncButton.addEventListener("click", syncSources);
   els.exportButton.addEventListener("click", exportCurrentCsv);
   els.auditToggleButton.addEventListener("click", toggleAuditPanel);
@@ -373,6 +429,14 @@ function bindEvents() {
   els.chartRangeSelect.addEventListener("change", () => {
     state.chartRange = els.chartRangeSelect.value;
     renderEvolutionChart();
+  });
+  els.nubankCategoryFilter.addEventListener("change", () => {
+    state.nubankFilters.category = els.nubankCategoryFilter.value;
+    renderNubankTable();
+  });
+  els.nubankSearchInput.addEventListener("input", () => {
+    state.nubankFilters.search = normalizeText(els.nubankSearchInput.value);
+    renderNubankTable();
   });
   els.settingsButton.addEventListener("click", openSettings);
   els.incomeSettingsButton.addEventListener("click", openIncomeSettings);
@@ -1533,7 +1597,8 @@ async function syncSources() {
     const billsCount = state.records.filter((record) => record.recordType === "bill").length;
     const proofsCount = state.records.filter((record) => record.recordType === "proof").length;
     const sommaCount = state.records.filter((record) => record.recordType === "bill" && record.sourceRuleId === "sommaInvoice").length;
-    showToast(`Sincronização concluída: ${billsCount} contas, Somma: ${sommaCount}, ${proofsCount} comprovantes não conciliados e ${state.driveFiles.length} arquivos do Drive.`);
+    const nubankTransactionCount = state.records.reduce((count, record) => count + (record.nubankTransactions?.length || 0), 0);
+    showToast(`Sincronização concluída: ${billsCount} contas, ${nubankTransactionCount} compras Nubank, Somma: ${sommaCount}, ${proofsCount} comprovantes não conciliados e ${state.driveFiles.length} arquivos do Drive.`);
   } catch (error) {
     renderConnectionStatus(`Google: ${error.message}`, "bad");
     showToast(error.message);
@@ -1915,6 +1980,8 @@ async function parseGmailMessage(message) {
   const category = rule.category || parsed.category || classifyCategory(`${subject} ${from}`);
   const createdAt = sentDate.toISOString();
   const dueDate = recordType === "proof" ? parsed.paidDate || parsed.dueDate || toISODate(sentDate) : parsed.dueDate || toISODate(sentDate);
+  const nubankTransactions =
+    rule.id === "nubankInvoice" ? parseNubankInvoiceTransactions(attachmentText, { dueDate, messageId: message.id }) : [];
   const status =
     recordType === "proof" || (parsed.amountConfirmed && parsed.amount === 0)
       ? "paid"
@@ -1940,6 +2007,7 @@ async function parseGmailMessage(message) {
     cnpjs: parsed.cnpjs,
     periodKey: parsed.periodKey,
     installment: parsed.installment,
+    nubankTransactions,
     sourceTypes: ["gmail"],
     sourceRuleId: rule.id,
     sources: [
@@ -2012,6 +2080,92 @@ async function extractGmailAttachmentText(messageId, attachments, password = "")
     }
   });
   return texts.filter(Boolean).join("\n");
+}
+
+function parseNubankInvoiceTransactions(text, { dueDate = "", messageId = "" } = {}) {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const transactions = [];
+  const datePattern = /^(\d{1,2})\s+(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\b/i;
+  const amountPattern = /(?:R\$\s*)?(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})(?!\d)/i;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const dateMatch = lines[index].match(datePattern);
+    if (!dateMatch) continue;
+
+    const candidateLines = [lines[index]];
+    for (let offset = 1; offset <= 4 && index + offset < lines.length; offset += 1) {
+      if (datePattern.test(lines[index + offset])) break;
+      candidateLines.push(lines[index + offset]);
+      if (amountPattern.test(lines[index + offset])) break;
+    }
+
+    const candidate = candidateLines.join(" ");
+    const amountMatches = Array.from(candidate.matchAll(new RegExp(amountPattern.source, "gi")));
+    const amountMatch = amountMatches.at(-1);
+    if (!amountMatch) continue;
+
+    const amount = parseCurrencyInput(amountMatch[1]);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+
+    const dateLabel = dateMatch[0];
+    const description = cleanNubankTransactionDescription(candidate.slice(dateLabel.length, amountMatch.index));
+    if (!description || isNubankInvoiceSummaryLine(description)) continue;
+
+    const date = buildNubankTransactionDate(Number(dateMatch[1]), dateMatch[2], dueDate);
+    const installment = findNubankTransactionInstallment(description);
+    const merchant = description.replace(/\s*[-·]?\s*(?:parcela\s*)?\d{1,2}\s*(?:\/|de)\s*\d{1,2}\s*$/i, "").trim();
+    transactions.push({
+      id: `nubank-${messageId}-${transactions.length + 1}`,
+      date,
+      merchant: merchant || description,
+      description,
+      amount: roundCurrency(amount),
+      category: classifyNubankTransaction(description),
+      installment,
+    });
+  }
+
+  return transactions.sort((a, b) => a.date.localeCompare(b.date) || a.merchant.localeCompare(b.merchant, "pt-BR"));
+}
+
+function cleanNubankTransactionDescription(value) {
+  return String(value || "")
+    .replace(/\b\d{1,2}\s+(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\b/gi, " ")
+    .replace(/\b(?:R\$|BRL)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\-·:|\s]+|[\-·:|\s]+$/g, "")
+    .trim();
+}
+
+function isNubankInvoiceSummaryLine(value) {
+  return /\b(total(?: da fatura| de compras)?|pagamento recebido|pagamento efetuado|limite disponivel|limite total|saldo anterior|fatura fechada|valor total|subtotal|vencimento|melhor dia de compra|resumo da fatura)\b/i.test(
+    value,
+  );
+}
+
+function buildNubankTransactionDate(day, monthLabel, dueDate) {
+  const due = new Date(`${String(dueDate || toISODate(new Date())).slice(0, 10)}T12:00:00`);
+  const month = NUBANK_MONTHS[normalizeText(monthLabel).slice(0, 3)];
+  let candidate = new Date(due.getFullYear(), month, day, 12);
+  if (candidate.getTime() > due.getTime() + 45 * 86400000) {
+    candidate = new Date(due.getFullYear() - 1, month, day, 12);
+  }
+  return toISODate(candidate);
+}
+
+function findNubankTransactionInstallment(value) {
+  const match = String(value || "").match(/\b(?:parcela\s*)?(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})\b/i);
+  if (!match) return "";
+  const current = Number(match[1]);
+  const total = Number(match[2]);
+  return current >= 1 && total >= current && total <= 60 ? `${current}/${total}` : "";
+}
+
+function classifyNubankTransaction(value) {
+  return NUBANK_CATEGORY_RULES.find((rule) => rule.regex.test(value))?.category || "Outros";
 }
 
 async function extractDriveFileText(file) {
@@ -2117,13 +2271,34 @@ async function extractPdfText(bytes, password = "") {
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
       const content = await page.getTextContent();
-      pages.push(content.items.map((item) => item.str).join(" "));
+      pages.push(extractPdfPageText(content.items));
     }
 
     return pages.join("\n").slice(0, 30000);
   } catch {
     return "";
   }
+}
+
+function extractPdfPageText(items) {
+  const lines = [];
+  let currentLine = [];
+  let currentY = null;
+
+  (items || []).forEach((item) => {
+    const value = String(item?.str || "").trim();
+    if (!value) return;
+    const y = Number(item?.transform?.[5]);
+    if (currentLine.length && Number.isFinite(y) && Number.isFinite(currentY) && Math.abs(y - currentY) > 3) {
+      lines.push(currentLine.join(" "));
+      currentLine = [];
+    }
+    currentLine.push(value);
+    if (Number.isFinite(y)) currentY = y;
+  });
+
+  if (currentLine.length) lines.push(currentLine.join(" "));
+  return lines.join("\n");
 }
 
 async function loadPdfJs() {
@@ -2948,7 +3123,22 @@ function sanitizeRecordList(records, { includeProofs = true } = {}) {
       category: record.category || "Outros",
       status: normalizeRecordStatus(record),
       sourceTypes: record.sourceTypes?.length ? record.sourceTypes : inferSourceTypes(record.sources || []),
+      nubankTransactions: sanitizeNubankTransactions(record.nubankTransactions),
     }));
+}
+
+function sanitizeNubankTransactions(transactions) {
+  return (transactions || [])
+    .map((transaction, index) => ({
+      id: String(transaction?.id || `nubank-transaction-${index + 1}`),
+      date: String(transaction?.date || "").slice(0, 10),
+      merchant: String(transaction?.merchant || transaction?.description || "Compra não identificada").trim(),
+      description: String(transaction?.description || transaction?.merchant || "").trim(),
+      amount: roundCurrency(transaction?.amount || 0),
+      category: String(transaction?.category || "Outros"),
+      installment: String(transaction?.installment || ""),
+    }))
+    .filter((transaction) => transaction.date && transaction.merchant && transaction.amount > 0);
 }
 
 function normalizeRecordStatus(record) {
@@ -3078,6 +3268,7 @@ function isIptuRecord(record) {
 
 function render() {
   renderMonthSelect();
+  renderDashboardNavigation();
   renderConnectionStatus();
   renderMetrics();
   renderIncomePanel();
@@ -3086,7 +3277,29 @@ function render() {
   renderAuditVisibility();
   renderSearchSuggestions();
   renderTable();
+  if (state.activeDashboard === "nubank") renderNubankDashboard();
   window.lucide?.createIcons();
+}
+
+function selectDashboard(view) {
+  state.activeDashboard = view === "nubank" ? "nubank" : "household";
+  renderDashboardNavigation();
+  if (state.activeDashboard === "nubank") renderNubankDashboard();
+  renderCharts();
+  window.lucide?.createIcons();
+}
+
+function renderDashboardNavigation() {
+  els.dashboardNavButtons.forEach((button) => {
+    const active = button.dataset.dashboardView === state.activeDashboard;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  els.dashboardPanels.forEach((panel) => {
+    const active = panel.dataset.dashboardPanel === state.activeDashboard;
+    panel.hidden = !active;
+    panel.classList.toggle("is-active", active);
+  });
 }
 
 function renderMonthSelect() {
@@ -3378,6 +3591,10 @@ function renderIncomePanel() {
 }
 
 function renderCharts() {
+  if (state.activeDashboard === "nubank") {
+    renderNubankCharts();
+    return;
+  }
   renderEvolutionChart();
   renderCategoryChart();
 }
@@ -3521,6 +3738,234 @@ function renderCategoryChart() {
         tooltip: {
           callbacks: {
             label: (ctx) => `${ctx.label}: ${labels[0] === "Sem registros" ? "R$ 0,00" : formatCurrency(ctx.raw)}`,
+          },
+        },
+      },
+    }),
+  });
+}
+
+function getNubankInvoiceRecords(monthKey = state.selectedMonth) {
+  return getEffectiveRecords({ includeProofs: false }).filter(
+    (record) => record.sourceRuleId === "nubankInvoice" && record.monthKey === monthKey,
+  );
+}
+
+function getNubankTransactions(monthKey = state.selectedMonth) {
+  return getNubankInvoiceRecords(monthKey).flatMap((invoice) =>
+    sanitizeNubankTransactions(invoice.nubankTransactions).map((transaction) => ({
+      ...transaction,
+      invoiceId: invoice.id,
+      invoiceDueDate: invoice.dueDate,
+    })),
+  );
+}
+
+function renderNubankDashboard() {
+  const invoices = getNubankInvoiceRecords();
+  const transactions = getNubankTransactions();
+  const total = sum(transactions, "amount");
+  const average = transactions.length ? total / transactions.length : 0;
+  const largest = [...transactions].sort((a, b) => b.amount - a.amount)[0];
+  const installments = transactions.filter((transaction) => transaction.installment);
+  const installmentTotal = sum(installments, "amount");
+  const invoiceTotal = sum(invoices, "amount");
+
+  els.nubankInvoiceCaption.textContent = invoices.length
+    ? `${formatMonth(state.selectedMonth)} · ${formatCurrency(invoiceTotal)} na fatura · vencimento ${formatDate(invoices[0].dueDate)}`
+    : `${formatMonth(state.selectedMonth)} · nenhuma fatura Nubank sincronizada`;
+  els.nubankMetricTotal.textContent = formatCurrency(total);
+  els.nubankMetricTotalHint.textContent = `${transactions.length} ${transactions.length === 1 ? "compra identificada" : "compras identificadas"}`;
+  els.nubankMetricAverage.textContent = formatCurrency(average);
+  els.nubankMetricAverageHint.textContent = transactions.length ? `Média de ${transactions.length} compras` : "Por compra";
+  els.nubankMetricLargest.textContent = formatCurrency(largest?.amount || 0);
+  els.nubankMetricLargestHint.textContent = largest?.merchant || "Sem dados";
+  els.nubankMetricInstallments.textContent = formatCurrency(installmentTotal);
+  els.nubankMetricInstallmentsHint.textContent = `${installments.length} ${installments.length === 1 ? "parcela identificada" : "parcelas identificadas"}`;
+
+  renderNubankCategoryFilter(transactions);
+  renderNubankTable();
+  renderNubankInsights(invoices, transactions);
+}
+
+function renderNubankCategoryFilter(transactions) {
+  const categories = Array.from(new Set(transactions.map((transaction) => transaction.category))).sort((a, b) =>
+    a.localeCompare(b, "pt-BR"),
+  );
+  if (state.nubankFilters.category !== "all" && !categories.includes(state.nubankFilters.category)) {
+    state.nubankFilters.category = "all";
+  }
+  els.nubankCategoryFilter.innerHTML = [
+    `<option value="all">Todas</option>`,
+    ...categories.map(
+      (category) =>
+        `<option value="${escapeAttribute(category)}" ${category === state.nubankFilters.category ? "selected" : ""}>${escapeHtml(category)}</option>`,
+    ),
+  ].join("");
+}
+
+function renderNubankTable() {
+  const transactions = getNubankTransactions()
+    .filter((transaction) => state.nubankFilters.category === "all" || transaction.category === state.nubankFilters.category)
+    .filter((transaction) => !state.nubankFilters.search || normalizeText(transaction.description).includes(state.nubankFilters.search))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount);
+
+  els.nubankTransactionsBody.innerHTML = transactions
+    .map(
+      (transaction) => `
+        <tr>
+          <td data-label="Data">${escapeHtml(formatDate(transaction.date))}</td>
+          <td data-label="Estabelecimento" title="${escapeAttribute(transaction.description)}">${escapeHtml(transaction.merchant)}</td>
+          <td data-label="Categoria"><span class="nubank-category-pill">${escapeHtml(transaction.category)}</span></td>
+          <td data-label="Parcela">${escapeHtml(transaction.installment || "À vista")}</td>
+          <td data-label="Valor" class="numeric">${escapeHtml(formatCurrency(transaction.amount))}</td>
+        </tr>
+      `,
+    )
+    .join("");
+  els.nubankEmptyState.hidden = transactions.length > 0;
+  els.nubankTableCaption.textContent = `${transactions.length} ${transactions.length === 1 ? "compra" : "compras"} em ${formatMonth(state.selectedMonth)}`;
+}
+
+function renderNubankInsights(invoices, transactions) {
+  if (!transactions.length) {
+    els.nubankInsightsList.innerHTML = `
+      <div class="nubank-insight empty">
+        <i data-lucide="scan-search"></i>
+        <div><strong>Aguardando compras</strong><span>Use Sincronizar para analisar o PDF anexado à fatura.</span></div>
+      </div>
+    `;
+    return;
+  }
+
+  const total = sum(transactions, "amount");
+  const invoiceTotal = sum(invoices, "amount");
+  const previousMonth = addMonthsToMonthKey(state.selectedMonth, -1);
+  const previousTotal = sum(getNubankTransactions(previousMonth), "amount");
+  const categoryTotals = aggregateNubankTransactions(transactions, "category");
+  const merchantTotals = aggregateNubankTransactions(transactions, "merchant");
+  const topCategory = categoryTotals[0];
+  const topMerchant = merchantTotals[0];
+  const difference = roundCurrency(invoiceTotal - total);
+  const insights = [];
+
+  if (previousTotal > 0) {
+    const change = (total - previousTotal) / previousTotal;
+    insights.push({
+      icon: change > 0 ? "trending-up" : "trending-down",
+      title: `${change > 0 ? "Alta" : "Queda"} de ${formatPercent(Math.abs(change))}`,
+      text: `Comparado às compras identificadas em ${formatMonth(previousMonth)}.`,
+    });
+  }
+  if (topCategory) {
+    insights.push({
+      icon: "chart-pie",
+      title: `${topCategory.label} lidera a fatura`,
+      text: `${formatCurrency(topCategory.total)} · ${formatPercent(topCategory.total / total)} dos gastos identificados.`,
+    });
+  }
+  if (topMerchant) {
+    insights.push({
+      icon: "store",
+      title: `Mais gasto em ${topMerchant.label}`,
+      text: `${formatCurrency(topMerchant.total)} somando ${topMerchant.count} ${topMerchant.count === 1 ? "compra" : "compras"}.`,
+    });
+  }
+  if (Math.abs(difference) >= 0.01) {
+    insights.push({
+      icon: "circle-alert",
+      title: `${formatCurrency(Math.abs(difference))} ainda sem detalhamento`,
+      text: difference > 0 ? "Parte da fatura não foi reconhecida como compra." : "As compras extraídas superam o total detectado da fatura.",
+    });
+  }
+
+  els.nubankInsightsList.innerHTML = insights
+    .slice(0, 5)
+    .map(
+      (insight) => `
+        <div class="nubank-insight">
+          <i data-lucide="${escapeAttribute(insight.icon)}"></i>
+          <div><strong>${escapeHtml(insight.title)}</strong><span>${escapeHtml(insight.text)}</span></div>
+        </div>
+      `,
+    )
+    .join("");
+}
+
+function aggregateNubankTransactions(transactions, field) {
+  const values = new Map();
+  transactions.forEach((transaction) => {
+    const label = transaction[field] || "Outros";
+    const current = values.get(label) || { label, total: 0, count: 0 };
+    current.total += transaction.amount;
+    current.count += 1;
+    values.set(label, current);
+  });
+  return Array.from(values.values()).sort((a, b) => b.total - a.total);
+}
+
+function renderNubankCharts() {
+  if (!window.Chart || state.activeDashboard !== "nubank") return;
+  const transactions = getNubankTransactions();
+  renderNubankDailyChart(transactions);
+  renderNubankCategoryChart(transactions);
+}
+
+function renderNubankDailyChart(transactions) {
+  const daily = aggregateNubankTransactions(transactions, "date").sort((a, b) => a.label.localeCompare(b.label));
+  const labels = daily.length ? daily.map((item) => formatDate(item.label).slice(0, 5)) : ["Sem dados"];
+  const values = daily.length ? daily.map((item) => item.total) : [0];
+  if (state.charts.nubankDaily) state.charts.nubankDaily.destroy();
+  state.charts.nubankDaily = new window.Chart(els.nubankDailyChart, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Gastos",
+          data: values,
+          borderColor: "#820ad1",
+          backgroundColor: "rgba(130, 10, 209, 0.12)",
+          fill: true,
+          borderWidth: 3,
+          tension: 0.3,
+          pointRadius: daily.length > 20 ? 1 : 3,
+        },
+      ],
+    },
+    options: chartBaseOptions({
+      scales: {
+        y: { ticks: { callback: (value) => formatCompactCurrency(value) } },
+      },
+    }),
+  });
+}
+
+function renderNubankCategoryChart(transactions) {
+  const categories = aggregateNubankTransactions(transactions, "category");
+  const labels = categories.length ? categories.map((item) => item.label) : ["Sem dados"];
+  const values = categories.length ? categories.map((item) => item.total) : [1];
+  if (state.charts.nubankCategory) state.charts.nubankCategory.destroy();
+  state.charts.nubankCategory = new window.Chart(els.nubankCategoryChart, {
+    type: "doughnut",
+    data: {
+      labels,
+      datasets: [
+        {
+          data: values,
+          backgroundColor: labels.map((_, index) => (categories.length ? NUBANK_COLOR_SET[index % NUBANK_COLOR_SET.length] : "#e5d8ee")),
+          borderColor: "#ffffff",
+          borderWidth: 3,
+        },
+      ],
+    },
+    options: chartBaseOptions({
+      scales: null,
+      cutout: "64%",
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.label}: ${categories.length ? formatCurrency(ctx.raw) : "R$ 0,00"}`,
           },
         },
       },

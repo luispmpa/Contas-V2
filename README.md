@@ -117,3 +117,15 @@ As regras em `firestore.rules` liberam leitura e escrita para os e-mails do Luí
 - Reconhece confirmações de pagamento do Nubank e da Somma para conciliar as respectivas contas.
 - Vincula comprovantes do Drive por valor, mês, categoria e similaridade de texto.
 - Permite ajustes manuais por registro, salvos no cache local e no Firestore quando configurado.
+
+## Dashboard Nubank
+
+O submenu `Nubank` é alimentado automaticamente durante a sincronização do Gmail:
+
+- Localiza a mensagem de fechamento da fatura Nubank.
+- Baixa e lê o PDF anexado ao e-mail.
+- Extrai data, estabelecimento, valor e parcela de cada compra identificada.
+- Categoriza as compras e gera métricas, gráficos e insights.
+- Salva as transações junto ao registro da fatura no cache local e no Firestore.
+
+Não é necessário importar arquivos manualmente. Após a primeira atualização desta funcionalidade, execute `Sincronizar` para reprocessar as faturas já encontradas no período configurado.
