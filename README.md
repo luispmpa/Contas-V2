@@ -157,6 +157,8 @@ O submenu `Nubank` é alimentado automaticamente durante a sincronização do Gm
 - Separa automaticamente linhas do PDF que combinam uma compra com a coluna de pagamentos e mostra o ajuste na conciliação.
 - Categoriza as compras e gera métricas, gráficos e insights.
 - Permite abrir os quadrantes para detalhar as compras consideradas e ordenar a tabela por data, valor, estabelecimento ou categoria.
+- Permite alternar o gráfico entre gastos dentro da fatura e evolução mensal dos valores finais das faturas.
+- Permite ordenar a tabela também clicando diretamente nos cabeçalhos das colunas.
 - Salva as transações junto ao registro da fatura no cache local e no Firestore.
 
 Não é necessário importar arquivos manualmente. Após a primeira atualização desta funcionalidade, execute `Sincronizar` para reprocessar as faturas já encontradas no período configurado.

@@ -5,7 +5,7 @@ const OVERRIDES_KEY = "contasDomesticas.overrides.v1";
 const STANDARD_ACCOUNTS_KEY = "contasDomesticas.standardAccounts.v1";
 const VIEW_KEY = "contasDomesticas.view.v1";
 const THEME_KEY = "contas-theme";
-const APP_VERSION = "20260611-30";
+const APP_VERSION = "20260611-31";
 const MANUAL_RECURRENCE_HORIZON_MONTHS = 36;
 
 const GOOGLE_SCOPES = [
@@ -258,12 +258,16 @@ const els = {
   nubankMetricInstallmentsHint: document.querySelector("#nubankMetricInstallmentsHint"),
   nubankMetricInstallmentsCard: document.querySelector("#nubankMetricInstallmentsCard"),
   nubankDailyChart: document.querySelector("#nubankDailyChart"),
+  nubankEvolutionTitle: document.querySelector("#nubankEvolutionTitle"),
+  nubankEvolutionCaption: document.querySelector("#nubankEvolutionCaption"),
+  nubankChartModeButtons: Array.from(document.querySelectorAll("[data-nubank-chart-mode]")),
   nubankCategoryChart: document.querySelector("#nubankCategoryChart"),
   nubankCategoryFilter: document.querySelector("#nubankCategoryFilter"),
   nubankSearchInput: document.querySelector("#nubankSearchInput"),
   nubankSortSelect: document.querySelector("#nubankSortSelect"),
   nubankSortDirection: document.querySelector("#nubankSortDirection"),
   nubankTransactionsBody: document.querySelector("#nubankTransactionsBody"),
+  nubankSortColumnButtons: Array.from(document.querySelectorAll("[data-nubank-sort-column]")),
   nubankTableCaption: document.querySelector("#nubankTableCaption"),
   nubankEmptyState: document.querySelector("#nubankEmptyState"),
   nubankInsightsList: document.querySelector("#nubankInsightsList"),
@@ -411,6 +415,7 @@ const state = {
     sort: ["date", "amount", "merchant", "category"].includes(VIEW_PREFS.nubankSort) ? VIEW_PREFS.nubankSort : "date",
     direction: VIEW_PREFS.nubankDirection === "asc" ? "asc" : "desc",
   },
+  nubankChartMode: VIEW_PREFS.nubankChartMode === "monthly" ? "monthly" : "daily",
   chartRange: typeof VIEW_PREFS.chartRange === "string" ? VIEW_PREFS.chartRange : "12",
   isSyncing: false,
   settingsTab: "integrations",
@@ -578,6 +583,12 @@ function bindEvents() {
     saveViewPrefs();
     renderNubankTable();
   });
+  els.nubankSortColumnButtons.forEach((button) => {
+    button.addEventListener("click", () => sortNubankByColumn(button.dataset.nubankSortColumn));
+  });
+  els.nubankChartModeButtons.forEach((button) => {
+    button.addEventListener("click", () => selectNubankChartMode(button.dataset.nubankChartMode));
+  });
   bindDrilldownCard(els.nubankMetricTotalCard, () => openNubankMetricDetail("total"));
   bindDrilldownCard(els.nubankMetricAverageCard, () => openNubankMetricDetail("average"));
   bindDrilldownCard(els.nubankMetricLargestCard, () => openNubankMetricDetail("largest"));
@@ -716,6 +727,7 @@ function saveViewPrefs() {
     selectedMonth: state.selectedMonth,
     nubankSort: state.nubankFilters.sort,
     nubankDirection: state.nubankFilters.direction,
+    nubankChartMode: state.nubankChartMode,
   });
 }
 
@@ -4073,6 +4085,36 @@ function renderNubankTable() {
   els.nubankTransactionsBody.innerHTML = renderNubankTransactionRows(transactions);
   els.nubankEmptyState.hidden = transactions.length > 0;
   els.nubankTableCaption.textContent = `${transactions.length} ${transactions.length === 1 ? "compra" : "compras"} em ${formatMonth(state.selectedMonth)}`;
+  renderNubankSortHeaders();
+}
+
+function sortNubankByColumn(column) {
+  if (!["date", "amount", "merchant", "category"].includes(column)) return;
+  if (state.nubankFilters.sort === column) {
+    state.nubankFilters.direction = state.nubankFilters.direction === "asc" ? "desc" : "asc";
+  } else {
+    state.nubankFilters.sort = column;
+    state.nubankFilters.direction = column === "merchant" || column === "category" ? "asc" : "desc";
+  }
+  els.nubankSortSelect.value = state.nubankFilters.sort;
+  els.nubankSortDirection.value = state.nubankFilters.direction;
+  saveViewPrefs();
+  renderNubankTable();
+}
+
+function renderNubankSortHeaders() {
+  els.nubankSortColumnButtons.forEach((button) => {
+    const active = button.dataset.nubankSortColumn === state.nubankFilters.sort;
+    button.classList.toggle("is-active", active);
+    button.dataset.direction = active ? state.nubankFilters.direction : "";
+    button.setAttribute("aria-sort", active ? (state.nubankFilters.direction === "asc" ? "ascending" : "descending") : "none");
+    const icon = button.querySelector("i, svg");
+    if (icon) {
+      const iconName = active ? (state.nubankFilters.direction === "asc" ? "arrow-up" : "arrow-down") : "chevrons-up-down";
+      icon.outerHTML = `<i data-lucide="${iconName}"></i>`;
+    }
+  });
+  window.lucide?.createIcons();
 }
 
 function compareNubankTransactions(a, b) {
@@ -4288,8 +4330,30 @@ function aggregateNubankTransactions(transactions, field) {
 function renderNubankCharts() {
   if (!window.Chart || state.activeDashboard !== "nubank") return;
   const transactions = getNubankTransactions();
-  renderNubankDailyChart(transactions);
+  renderNubankEvolutionChart();
   renderNubankCategoryChart(transactions);
+}
+
+function selectNubankChartMode(mode) {
+  state.nubankChartMode = mode === "monthly" ? "monthly" : "daily";
+  saveViewPrefs();
+  renderNubankEvolutionChart();
+}
+
+function renderNubankEvolutionChart() {
+  const monthly = state.nubankChartMode === "monthly";
+  els.nubankChartModeButtons.forEach((button) => {
+    const active = button.dataset.nubankChartMode === state.nubankChartMode;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  els.nubankEvolutionTitle.textContent = monthly ? "Evolução mensal das faturas" : "Gastos ao longo da fatura";
+  els.nubankEvolutionCaption.textContent = monthly ? "Valor final da fatura comparado às compras identificadas" : "Compras agrupadas por dia";
+  if (monthly) {
+    renderNubankMonthlyChart();
+  } else {
+    renderNubankDailyChart(getNubankTransactions());
+  }
 }
 
 function renderNubankDailyChart(transactions) {
@@ -4315,6 +4379,60 @@ function renderNubankDailyChart(transactions) {
       ],
     },
     options: chartBaseOptions({
+      scales: {
+        y: { ticks: { callback: (value) => formatCompactCurrency(value) } },
+      },
+    }),
+  });
+}
+
+function renderNubankMonthlyChart() {
+  const invoices = getEffectiveRecords({ includeProofs: false }).filter((record) => record.sourceRuleId === "nubankInvoice");
+  const months = Array.from(new Set(invoices.map((invoice) => invoice.monthKey).filter(Boolean))).sort();
+  const labels = months.length ? months.map(formatMonthShort) : ["Sem dados"];
+  const invoiceValues = months.length
+    ? months.map((month) => sum(invoices.filter((invoice) => invoice.monthKey === month), "amount"))
+    : [0];
+  const purchaseValues = months.length ? months.map((month) => sum(getNubankTransactions(month), "amount")) : [0];
+
+  if (state.charts.nubankDaily) state.charts.nubankDaily.destroy();
+  state.charts.nubankDaily = new window.Chart(els.nubankDailyChart, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          type: "bar",
+          label: "Valor da fatura",
+          data: invoiceValues,
+          backgroundColor: "rgba(130, 10, 209, 0.28)",
+          borderColor: "#820ad1",
+          borderWidth: 1,
+          borderRadius: 6,
+        },
+        {
+          type: "line",
+          label: "Compras identificadas",
+          data: purchaseValues,
+          borderColor: "#b24bf3",
+          backgroundColor: "#b24bf3",
+          borderWidth: 3,
+          tension: 0.3,
+          pointRadius: 4,
+        },
+      ],
+    },
+    options: chartBaseOptions({
+      onClick: (event, elements, chart) => {
+        const points = elements.length
+          ? elements
+          : chart.getElementsAtEventForMode(event, "nearest", { intersect: false }, true);
+        const point = points[0];
+        if (point && months[point.index]) selectMonth(months[point.index]);
+      },
+      onHover: (event, elements) => {
+        if (event.native?.target) event.native.target.style.cursor = months.length && (elements || []).length ? "pointer" : "default";
+      },
       scales: {
         y: { ticks: { callback: (value) => formatCompactCurrency(value) } },
       },

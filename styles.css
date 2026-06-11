@@ -742,6 +742,64 @@ textarea:focus {
   height: 318px;
 }
 
+.nubank-chart-controls {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.nubank-chart-mode {
+  min-height: 32px;
+  padding: 0 10px;
+  color: var(--muted);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.nubank-chart-mode.is-active {
+  color: #fff;
+  background: #820ad1;
+}
+
+.table-sort-button {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: inherit;
+  text-align: left;
+  text-transform: inherit;
+}
+
+.table-sort-button.numeric {
+  justify-content: flex-end;
+}
+
+.table-sort-button svg {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.table-sort-button.is-active {
+  color: #820ad1;
+}
+
+.table-sort-button.is-active svg {
+  color: #820ad1;
+}
+
 .table-header {
   align-items: flex-start;
 }
@@ -2133,6 +2191,14 @@ td.numeric {
   .chart-panel .panel-header {
     align-items: end;
     flex-wrap: wrap;
+  }
+
+  .nubank-chart-controls {
+    width: 100%;
+  }
+
+  .nubank-chart-mode {
+    flex: 1 1 0;
   }
 
   .chart-range-control {

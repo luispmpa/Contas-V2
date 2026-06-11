@@ -29,7 +29,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="./styles.css?v=20260611-30" />
+    <link rel="stylesheet" href="./styles.css?v=20260611-31" />
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
@@ -325,8 +325,12 @@
             <article class="panel chart-panel wide">
               <div class="panel-header">
                 <div>
-                  <h2>Gastos ao longo da fatura</h2>
-                  <p>Compras agrupadas por dia</p>
+                  <h2 id="nubankEvolutionTitle">Gastos ao longo da fatura</h2>
+                  <p id="nubankEvolutionCaption">Compras agrupadas por dia</p>
+                </div>
+                <div class="nubank-chart-controls" role="group" aria-label="Visualização do gráfico Nubank">
+                  <button class="nubank-chart-mode is-active" type="button" data-nubank-chart-mode="daily" aria-pressed="true">Dentro da fatura</button>
+                  <button class="nubank-chart-mode" type="button" data-nubank-chart-mode="monthly" aria-pressed="false">Evolução mensal</button>
                 </div>
               </div>
               <div class="chart-frame">
@@ -386,11 +390,11 @@
                 <table>
                   <thead>
                     <tr>
-                      <th>Data</th>
-                      <th>Estabelecimento</th>
-                      <th>Categoria</th>
+                      <th><button class="table-sort-button" type="button" data-nubank-sort-column="date">Data <i data-lucide="chevrons-up-down"></i></button></th>
+                      <th><button class="table-sort-button" type="button" data-nubank-sort-column="merchant">Estabelecimento <i data-lucide="chevrons-up-down"></i></button></th>
+                      <th><button class="table-sort-button" type="button" data-nubank-sort-column="category">Categoria <i data-lucide="chevrons-up-down"></i></button></th>
                       <th>Parcela</th>
-                      <th class="numeric">Valor</th>
+                      <th class="numeric"><button class="table-sort-button numeric" type="button" data-nubank-sort-column="amount">Valor <i data-lucide="chevrons-up-down"></i></button></th>
                     </tr>
                   </thead>
                   <tbody id="nubankTransactionsBody"></tbody>
@@ -1108,7 +1112,7 @@
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-    <script src="./config.js?v=20260611-30"></script>
-    <script type="module" src="./src/app.js?v=20260611-30"></script>
+    <script src="./config.js?v=20260611-31"></script>
+    <script type="module" src="./src/app.js?v=20260611-31"></script>
   </body>
 </html>

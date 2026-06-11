@@ -3,7 +3,7 @@
 // sempre atualizado) com fallback para cache quando offline. Requisições
 // cross-origin (Firebase, Google APIs, CDNs) passam direto pela rede.
 
-const VERSION = "20260611-30";
+const VERSION = "20260611-31";
 const CACHE_NAME = `contas-cache-${VERSION}`;
 
 const PRECACHE_URLS = [
