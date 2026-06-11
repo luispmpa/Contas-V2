@@ -3,8 +3,9 @@ const RECORDS_KEY = "contasDomesticas.records.v1";
 const DRIVE_KEY = "contasDomesticas.drive.v1";
 const OVERRIDES_KEY = "contasDomesticas.overrides.v1";
 const STANDARD_ACCOUNTS_KEY = "contasDomesticas.standardAccounts.v1";
+const VIEW_KEY = "contasDomesticas.view.v1";
 const THEME_KEY = "contas-theme";
-const APP_VERSION = "20260611-1";
+const APP_VERSION = "20260611-2";
 const MANUAL_RECURRENCE_HORIZON_MONTHS = 36;
 
 const GOOGLE_SCOPES = [
@@ -246,6 +247,11 @@ const els = {
   detailSources: document.querySelector("#detailSources"),
   detailEvidence: document.querySelector("#detailEvidence"),
   detailProofs: document.querySelector("#detailProofs"),
+  detailActions: document.querySelector("#detailActions"),
+  detailTogglePaidButton: document.querySelector("#detailTogglePaidButton"),
+  detailCategorySelect: document.querySelector("#detailCategorySelect"),
+  detailRevertButton: document.querySelector("#detailRevertButton"),
+  detailOverrideNote: document.querySelector("#detailOverrideNote"),
   editManualAccountButton: document.querySelector("#editManualAccountButton"),
   settingsDialog: document.querySelector("#settingsDialog"),
   gmailAccountInput: document.querySelector("#gmailAccountInput"),
@@ -312,13 +318,15 @@ const els = {
   toast: document.querySelector("#toast"),
 };
 
+const VIEW_PREFS = readJSON(VIEW_KEY, {});
+
 const state = {
   config: loadConfig(),
   records: readJSON(RECORDS_KEY, []),
   driveFiles: readJSON(DRIVE_KEY, []),
   overrides: readJSON(OVERRIDES_KEY, {}),
   standardAccounts: normalizeStandardAccounts(readJSON(STANDARD_ACCOUNTS_KEY, [])),
-  selectedMonth: "",
+  selectedMonth: typeof VIEW_PREFS.selectedMonth === "string" ? VIEW_PREFS.selectedMonth : "",
   selectedRecordId: "",
   googleAccessToken: "",
   googleTokenClient: null,
@@ -331,13 +339,13 @@ const state = {
     category: null,
   },
   filters: {
-    status: "all",
+    status: typeof VIEW_PREFS.status === "string" ? VIEW_PREFS.status : "all",
     search: "",
     recordIds: [],
   },
   searchOptions: [],
   auditVisible: false,
-  chartRange: "12",
+  chartRange: typeof VIEW_PREFS.chartRange === "string" ? VIEW_PREFS.chartRange : "12",
   isSyncing: false,
   settingsTab: "integrations",
   editingManualRecordId: "",
@@ -362,6 +370,7 @@ function init() {
   populateSettingsForm();
   populateManualAccountForm();
   bindEvents();
+  applyViewPrefsToControls();
   setupPullToRefresh();
   registerServiceWorker();
   connectFirebaseFromConfig();
@@ -479,6 +488,7 @@ function bindEvents() {
   els.deleteSelectedRecordsButton.addEventListener("click", deleteSelectedRecords);
   els.chartRangeSelect.addEventListener("change", () => {
     state.chartRange = els.chartRangeSelect.value;
+    saveViewPrefs();
     renderEvolutionChart();
   });
   els.settingsButton.addEventListener("click", openSettings);
@@ -492,6 +502,9 @@ function bindEvents() {
   els.manualRecurringInput.addEventListener("change", updateManualRecurrenceControls);
   els.manualCompetencyInput.addEventListener("change", updateManualDueDateFromSelectedStandard);
   els.cancelManualEditButton.addEventListener("click", resetManualAccountForm);
+  els.detailTogglePaidButton?.addEventListener("click", toggleDetailPaid);
+  els.detailCategorySelect?.addEventListener("change", changeDetailCategory);
+  els.detailRevertButton?.addEventListener("click", revertDetailOverride);
   els.editManualAccountButton.addEventListener("click", openManualRecordEditor);
   els.saveManualAccountButton.addEventListener("click", saveManualAccount);
   els.applyStandardAccountButton.addEventListener("click", applySelectedStandardAccount);
@@ -515,6 +528,7 @@ function bindEvents() {
   els.statusFilter.addEventListener("change", () => {
     state.filters.status = els.statusFilter.value;
     state.filters.recordIds = [];
+    saveViewPrefs();
     updateSearchSuggestions(els.searchInput, els.recordSuggestions, { scope: "current" });
     renderTable();
   });
@@ -547,6 +561,7 @@ function bindEvents() {
     }
     state.selectedMonth = els.monthSelect.value;
     state.filters.recordIds = [];
+    saveViewPrefs();
     render();
   });
   els.saveSettingsButton.addEventListener("click", saveSettings);
@@ -600,6 +615,19 @@ function readJSON(key, fallback) {
 
 function writeJSON(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+function saveViewPrefs() {
+  writeJSON(VIEW_KEY, {
+    status: state.filters.status,
+    chartRange: state.chartRange,
+    selectedMonth: state.selectedMonth,
+  });
+}
+
+function applyViewPrefsToControls() {
+  if (els.statusFilter) els.statusFilter.value = state.filters.status;
+  if (els.chartRangeSelect) els.chartRangeSelect.value = state.chartRange;
 }
 
 function normalizeStandardAccounts(value = []) {
@@ -3272,6 +3300,7 @@ function selectMonth(monthKey) {
   if (!monthKey) return;
   state.selectedMonth = monthKey;
   state.filters.recordIds = [];
+  saveViewPrefs();
   render();
 }
 
@@ -4246,8 +4275,12 @@ function getRecordDisplayName(record = {}) {
 function openDetail(recordId) {
   const record = getEffectiveRecords().find((item) => item.id === recordId);
   if (!record) return;
-
   state.selectedRecordId = recordId;
+  renderDetail(record);
+  els.detailDialog.showModal();
+}
+
+function renderDetail(record) {
   els.editManualAccountButton.hidden = !isManualRecord(record);
   const statusForBadge = record.recordType === "proof" ? "proof" : record.status;
 
@@ -4264,8 +4297,90 @@ function openDetail(recordId) {
   els.detailSources.innerHTML = renderSources(record);
   els.detailEvidence.textContent = record.evidence || "Sem trecho extraído.";
   els.detailProofs.innerHTML = renderProofs(record.sources || []);
-  els.detailDialog.showModal();
+  renderDetailActions(record);
   window.lucide?.createIcons();
+}
+
+function renderDetailActions(record) {
+  // Comprovantes não têm ações de status/categoria.
+  const isProof = record.recordType === "proof";
+  els.detailActions.hidden = isProof;
+  if (isProof) return;
+
+  const isPaid = record.status === "paid";
+  els.detailTogglePaidButton.classList.toggle("is-paid", isPaid);
+  els.detailTogglePaidButton.innerHTML = `<i data-lucide="${isPaid ? "rotate-ccw" : "check-circle-2"}"></i><span>${isPaid ? "Reabrir conta" : "Marcar como pago"}</span>`;
+
+  const categories = getKnownCategories(record.category);
+  els.detailCategorySelect.innerHTML = categories
+    .map((category) => `<option value="${escapeAttribute(category)}" ${category === record.category ? "selected" : ""}>${escapeHtml(category)}</option>`)
+    .join("");
+
+  const override = state.overrides[record.id] || {};
+  const hasManualEdit = Boolean(override.status || override.category || override.dueDate || override.title || override.amountOverride);
+  els.detailRevertButton.hidden = !hasManualEdit;
+  els.detailOverrideNote.hidden = !hasManualEdit;
+}
+
+function getKnownCategories(current) {
+  const categories = new Set();
+  getEffectiveRecords().forEach((record) => {
+    if (record.category) categories.add(record.category);
+  });
+  state.standardAccounts.forEach((account) => {
+    if (account.category) categories.add(account.category);
+  });
+  if (current) categories.add(current);
+  return Array.from(categories).sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+async function setRecordOverride(recordId, patch, { message } = {}) {
+  const next = { ...(state.overrides[recordId] || {}), ...patch };
+  state.overrides[recordId] = next;
+  writeJSON(OVERRIDES_KEY, state.overrides);
+  render();
+  const updated = getEffectiveRecords().find((item) => item.id === recordId);
+  if (updated && els.detailDialog.open && state.selectedRecordId === recordId) renderDetail(updated);
+  if (message) showToast(message);
+  try {
+    await persistOverrideToFirebase(recordId, next);
+  } catch (error) {
+    showToast(`Não foi possível salvar a alteração: ${error.message}`);
+  }
+}
+
+function toggleDetailPaid() {
+  const record = getEffectiveRecords().find((item) => item.id === state.selectedRecordId);
+  if (!record) return;
+  const markPaid = record.status !== "paid";
+  setRecordOverride(record.id, { status: markPaid ? "paid" : "open" }, {
+    message: markPaid ? "Conta marcada como paga." : "Conta reaberta.",
+  });
+}
+
+function changeDetailCategory() {
+  const value = els.detailCategorySelect.value;
+  const record = getEffectiveRecords().find((item) => item.id === state.selectedRecordId);
+  if (!record || !value || value === record.category) return;
+  setRecordOverride(record.id, { category: value }, { message: `Categoria alterada para "${value}".` });
+}
+
+function revertDetailOverride() {
+  const recordId = state.selectedRecordId;
+  const existing = state.overrides[recordId];
+  if (!existing) return;
+  // Mantém apenas a flag de exclusão (se existir); descarta os ajustes de conteúdo.
+  if (existing.deleted) {
+    state.overrides[recordId] = { deleted: existing.deleted, deletedAt: existing.deletedAt };
+  } else {
+    delete state.overrides[recordId];
+  }
+  writeJSON(OVERRIDES_KEY, state.overrides);
+  render();
+  const updated = getEffectiveRecords().find((item) => item.id === recordId);
+  if (updated && els.detailDialog.open) renderDetail(updated);
+  showToast("Ajustes revertidos.");
+  persistOverrideToFirebase(recordId, state.overrides[recordId] || {}).catch(() => undefined);
 }
 
 function renderAttachments(record) {
