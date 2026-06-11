@@ -26,6 +26,12 @@ http://127.0.0.1:4173
 
 O projeto é HTML/CSS/JS estático. Ele não depende de um backend próprio e pode ser publicado em qualquer hospedagem estática.
 
+### Recursos de interface
+
+- **Tema claro/escuro**: alterne pelo botão de tema na barra superior; a escolha fica salva no navegador e respeita a preferência do sistema na primeira visita.
+- **Instalável (PWA)**: em HTTPS (ex.: GitHub Pages) o app pode ser instalado na tela inicial do celular/desktop e abrir offline com os dados em cache. Os ícones ficam em `icons/` e podem ser regenerados com `node scripts/generate-icons.mjs`.
+- **Mobile**: a barra superior mostra rótulos nos botões, há um botão flutuante de sincronização e gesto de puxar-para-atualizar.
+
 As configurações iniciais ficam em `config.js`. Você também pode sobrescrever tudo pela janela Configurações do dashboard; nesse caso os valores ficam no navegador atual.
 
 ## Publicar no GitHub Pages
