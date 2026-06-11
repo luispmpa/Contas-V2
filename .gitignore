@@ -1,0 +1,4 @@
+.server.log
+.server.err
+.firebase/
+firebase-debug.log

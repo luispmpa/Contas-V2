@@ -1,0 +1,8 @@
+.git
+.firebase
+.server.log
+.server.err
+README.md
+firestore.rules
+firebase-debug.log
+*.local

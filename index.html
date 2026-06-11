@@ -1,0 +1,869 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Contas domésticas</title>
+    <link rel="stylesheet" href="./styles.css?v=20260610-27" />
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <div class="brand-mark" aria-hidden="true">
+            <i data-lucide="home"></i>
+          </div>
+          <div>
+            <p class="eyebrow">Luís Paulo + Camila</p>
+            <h1>Contas domésticas</h1>
+          </div>
+        </div>
+
+        <label class="universal-search">
+          <span>Busca universal</span>
+          <input id="universalSearchInput" type="search" list="universalSuggestions" autocomplete="off" placeholder="Pesquisar..." />
+          <datalist id="universalSuggestions"></datalist>
+        </label>
+
+        <div class="topbar-actions">
+          <label class="month-control">
+            <span>Mês</span>
+            <select id="monthSelect"></select>
+          </label>
+          <button class="icon-button" id="syncButton" type="button" title="Sincronizar Gmail e Drive">
+            <i data-lucide="refresh-cw"></i>
+          </button>
+          <button class="icon-button" id="exportButton" type="button" title="Exportar CSV">
+            <i data-lucide="download"></i>
+          </button>
+          <button class="icon-button" id="auditToggleButton" type="button" title="Auditoria mensal" aria-expanded="false">
+            <i data-lucide="table-2"></i>
+          </button>
+          <button class="icon-button" id="allRecordsButton" type="button" title="Todos os registros">
+            <i data-lucide="database"></i>
+          </button>
+          <button class="icon-button" id="settingsButton" type="button" title="Configurações">
+            <i data-lucide="settings"></i>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <section class="status-strip" aria-live="polite">
+          <div>
+            <span class="status-dot" id="googleDot"></span>
+            <span id="googleStatus">Google desconectado</span>
+          </div>
+          <div>
+            <span class="status-dot" id="firebaseDot"></span>
+            <span id="firebaseStatus">Cache local</span>
+          </div>
+          <div>
+            <span class="status-dot ok"></span>
+            <span id="lastSyncLabel">Aguardando sincronização</span>
+          </div>
+        </section>
+
+        <section class="metrics-grid" aria-label="Resumo financeiro">
+          <article class="metric-card total is-clickable" id="metricMonthCard" role="button" tabindex="0" title="Detalhar total do mês">
+            <span>Total do mês</span>
+            <strong id="metricMonthTotal">R$ 0,00</strong>
+            <small id="metricMonthHint">0 contas com valor</small>
+          </article>
+          <article class="metric-card payable is-clickable" id="metricTotalCard" role="button" tabindex="0" title="Detalhar contas a pagar">
+            <span>Total a pagar</span>
+            <strong id="metricTotal">R$ 0,00</strong>
+            <small id="metricTotalHint">0 contas pendentes</small>
+          </article>
+          <article class="metric-card paid is-clickable" id="metricPaidCard" role="button" tabindex="0" title="Detalhar valores pagos">
+            <span>Total já pago</span>
+            <strong id="metricPaid">R$ 0,00</strong>
+            <small id="metricPaidHint">0 quitadas</small>
+          </article>
+          <article class="metric-card overdue is-clickable" id="metricOverdueCard" role="button" tabindex="0" title="Detalhar atrasados">
+            <span>Atrasados</span>
+            <strong id="metricOverdue">R$ 0,00</strong>
+            <small id="metricOverdueHint">0 vencidas</small>
+          </article>
+        </section>
+
+        <section class="split-layout">
+          <article class="panel chart-panel wide">
+            <div class="panel-header">
+              <div>
+                <h2>Evolução mensal</h2>
+                <p id="evolutionCaption">Gastos por competência</p>
+              </div>
+              <label class="chart-range-control">
+                <span>Período</span>
+                <select id="chartRangeSelect">
+                  <option value="3">3 meses</option>
+                  <option value="6">6 meses</option>
+                  <option value="12" selected>1 ano</option>
+                  <option value="36">3 anos</option>
+                  <option value="max">Máximo</option>
+                </select>
+              </label>
+            </div>
+            <div class="chart-frame">
+              <canvas id="evolutionChart"></canvas>
+            </div>
+          </article>
+
+          <article class="panel chart-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Distribuição</h2>
+                <p id="categoryCaption">Categorias do mês</p>
+              </div>
+            </div>
+            <div class="chart-frame square">
+              <canvas id="categoryChart"></canvas>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel audit-panel" id="auditPanel" hidden>
+          <div class="panel-header">
+            <div>
+              <h2>Auditoria mensal</h2>
+              <p>Resumo dos registros encontrados por competência</p>
+            </div>
+          </div>
+          <div class="audit-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Mês</th>
+                  <th class="numeric">Total contas</th>
+                  <th class="numeric">Pago</th>
+                  <th class="numeric">Contas</th>
+                  <th class="numeric">Comprovantes</th>
+                  <th class="numeric">A revisar</th>
+                </tr>
+              </thead>
+              <tbody id="monthlyAuditBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="content-grid">
+          <article class="panel table-panel">
+            <div class="panel-header table-header">
+              <div>
+                <h2>Registros</h2>
+                <p id="tableCaption">Clique em uma conta para abrir os detalhes</p>
+              </div>
+              <div class="table-tools">
+                <label class="filter-control">
+                  <span>Status</span>
+                  <select id="statusFilter">
+                    <option value="all">Todos</option>
+                    <option value="open">Em aberto</option>
+                    <option value="paid">Pagas</option>
+                    <option value="overdue">Atrasadas</option>
+                    <option value="needs-review">A revisar</option>
+                    <option value="pending-proof">Sem comprovante</option>
+                  </select>
+                </label>
+                <label class="filter-control search">
+                  <span>Busca</span>
+                  <input id="searchInput" type="search" list="recordSuggestions" autocomplete="off" />
+                  <datalist id="recordSuggestions"></datalist>
+                </label>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Conta</th>
+                    <th>Categoria</th>
+                    <th>Vencimento</th>
+                    <th>Status</th>
+                    <th class="numeric">Valor</th>
+                    <th>Fonte</th>
+                  </tr>
+                </thead>
+                <tbody id="recordsBody"></tbody>
+              </table>
+              <div class="empty-state" id="emptyState" hidden>
+                <i data-lucide="inbox"></i>
+                <strong>Nenhum registro para este filtro</strong>
+                <span>Sincronize ou ajuste o mês selecionado.</span>
+              </div>
+            </div>
+          </article>
+
+          <aside class="panel side-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Receitas</h2>
+                <p id="incomeCaption">Base da divisão proporcional</p>
+              </div>
+              <button class="icon-button small" id="incomeSettingsButton" type="button" title="Editar receitas">
+                <i data-lucide="pencil"></i>
+              </button>
+            </div>
+            <div class="income-list">
+              <div class="income-row">
+                <span>Luís Paulo</span>
+                <strong id="incomeLuis">R$ 10.000,00</strong>
+                <div class="income-contribution">
+                  <span>Contribuição no mês</span>
+                  <strong id="incomeLuisContribution">R$ 0,00</strong>
+                </div>
+                <div class="share-bar">
+                  <span id="barLuis"></span>
+                </div>
+                <small id="shareLuis">54,05%</small>
+              </div>
+              <div class="income-row">
+                <span>Camila</span>
+                <strong id="incomeCamila">R$ 8.500,00</strong>
+                <div class="income-contribution">
+                  <span>Contribuição no mês</span>
+                  <strong id="incomeCamilaContribution">R$ 0,00</strong>
+                </div>
+                <div class="share-bar">
+                  <span id="barCamila"></span>
+                </div>
+                <small id="shareCamila">45,95%</small>
+              </div>
+            </div>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <dialog class="dialog search-results-dialog" id="searchResultsDialog">
+      <form method="dialog" class="dialog-shell search-results-shell">
+        <header class="dialog-header">
+          <div>
+            <span class="badge neutral">Busca universal</span>
+            <h2 id="searchResultsTitle">Resultados encontrados</h2>
+            <p id="searchResultsCaption"></p>
+          </div>
+          <button class="icon-button ghost" value="cancel" title="Fechar">
+            <i data-lucide="x"></i>
+          </button>
+        </header>
+        <div class="search-results-list" id="searchResultsList"></div>
+      </form>
+    </dialog>
+
+    <dialog class="dialog records-browser-dialog" id="allRecordsDialog">
+      <form method="dialog" class="dialog-shell records-browser-shell">
+        <header class="dialog-header">
+          <div>
+            <span class="badge neutral">Banco de dados</span>
+            <h2>Todos os registros</h2>
+            <p id="allRecordsCaption">Contas e comprovantes de todas as competências</p>
+          </div>
+          <button class="icon-button ghost" value="cancel" title="Fechar">
+            <i data-lucide="x"></i>
+          </button>
+        </header>
+        <div class="records-browser-tools">
+          <label class="records-browser-search">
+            <span>Pesquisar</span>
+            <input id="allRecordsSearchInput" type="search" autocomplete="off" placeholder="Nome, fornecedor, valor, CNPJ..." />
+          </label>
+          <label>
+            <span>Tipo</span>
+            <select id="allRecordsTypeFilter">
+              <option value="all">Todos</option>
+              <option value="bill">Contas</option>
+              <option value="proof">Comprovantes</option>
+            </select>
+          </label>
+          <label>
+            <span>Status</span>
+            <select id="allRecordsStatusFilter">
+              <option value="all">Todos</option>
+              <option value="open">Em aberto</option>
+              <option value="paid">Pagas</option>
+              <option value="overdue">Atrasadas</option>
+              <option value="needs-review">A revisar</option>
+            </select>
+          </label>
+          <label>
+            <span>Categoria</span>
+            <select id="allRecordsCategoryFilter"></select>
+          </label>
+          <label>
+            <span>Ordenar por</span>
+            <select id="allRecordsSort">
+              <option value="month">Competência</option>
+              <option value="dueDate">Vencimento</option>
+              <option value="amount">Valor</option>
+              <option value="name">Nome</option>
+              <option value="status">Status</option>
+              <option value="category">Categoria</option>
+            </select>
+          </label>
+          <label>
+            <span>Ordem</span>
+            <select id="allRecordsDirection">
+              <option value="desc">Decrescente</option>
+              <option value="asc">Crescente</option>
+            </select>
+          </label>
+        </div>
+        <div class="records-browser-selection">
+          <label class="check-line">
+            <input id="allRecordsSelectVisible" type="checkbox" />
+            <span>Selecionar todos os registros visíveis</span>
+          </label>
+          <span id="allRecordsSelectionCaption">Nenhum registro selecionado</span>
+          <button class="danger-button compact" id="deleteSelectedRecordsButton" type="button" disabled>
+            <i data-lucide="trash-2"></i>
+            Excluir selecionados
+          </button>
+        </div>
+        <div class="records-browser-table-wrap">
+          <table class="records-browser-table">
+            <thead>
+              <tr>
+                <th class="record-selection-column"><span class="sr-only">Selecionar</span></th>
+                <th>Registro</th>
+                <th>Competência</th>
+                <th>Categoria</th>
+                <th>Vencimento</th>
+                <th>Status</th>
+                <th class="numeric">Valor</th>
+                <th>Fonte</th>
+              </tr>
+            </thead>
+            <tbody id="allRecordsBody"></tbody>
+          </table>
+          <div class="records-browser-empty" id="allRecordsEmpty" hidden>Nenhum registro corresponde aos filtros.</div>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="dialog month-archive-dialog" id="monthArchiveDialog">
+      <form method="dialog" class="dialog-shell month-archive-shell">
+        <header class="dialog-header">
+          <div>
+            <span class="badge neutral">Competências</span>
+            <h2 id="monthArchiveTitle">Selecionar mês</h2>
+            <p>Escolha uma competência do ano selecionado.</p>
+          </div>
+          <button class="icon-button ghost" value="cancel" title="Fechar">
+            <i data-lucide="x"></i>
+          </button>
+        </header>
+        <div class="month-archive-list" id="monthArchiveList"></div>
+      </form>
+    </dialog>
+
+    <dialog class="dialog" id="detailDialog">
+      <form method="dialog" class="dialog-shell">
+        <header class="dialog-header">
+          <div>
+            <span class="badge" id="detailStatus">Status</span>
+            <h2 id="detailTitle">Conta</h2>
+            <p id="detailSubtitle">Fonte e evidências</p>
+          </div>
+          <div class="dialog-header-actions">
+            <button class="secondary-button compact" id="editManualAccountButton" type="button" hidden>
+              <i data-lucide="pencil"></i>
+              Editar cadastro
+            </button>
+            <button class="icon-button ghost" value="cancel" title="Fechar">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+        </header>
+
+        <div class="detail-grid">
+          <section class="detail-section full">
+            <h3>Resumo</h3>
+            <dl class="detail-list">
+              <div><dt>Valor</dt><dd id="detailAmount">R$ 0,00</dd></div>
+              <div><dt>Vencimento</dt><dd id="detailDueDate">-</dd></div>
+              <div><dt>Categoria</dt><dd id="detailCategory">-</dd></div>
+              <div><dt>Conciliação</dt><dd id="detailReconciliation">-</dd></div>
+            </dl>
+          </section>
+
+          <section class="detail-section full">
+            <h3>Anexos</h3>
+            <div class="attachment-list" id="detailAttachments"></div>
+          </section>
+
+          <section class="detail-section full">
+            <h3>Comprovantes</h3>
+            <div class="proof-grid" id="detailProofs"></div>
+          </section>
+
+          <section class="detail-section full">
+            <h3>Fontes</h3>
+            <div class="source-list" id="detailSources"></div>
+          </section>
+
+          <section class="detail-section full">
+            <h3>Evidência</h3>
+            <p class="evidence" id="detailEvidence"></p>
+          </section>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="dialog settings-dialog" id="settingsDialog">
+      <form method="dialog" class="dialog-shell settings-shell">
+        <header class="dialog-header">
+          <div>
+            <span class="badge neutral">Configuração</span>
+            <h2>Configurações</h2>
+            <p>Integrações, regras, modelos e cadastros manuais</p>
+          </div>
+          <button class="icon-button ghost" value="cancel" title="Fechar">
+            <i data-lucide="x"></i>
+          </button>
+        </header>
+
+        <nav class="settings-tabs" aria-label="Seções das configurações">
+          <button class="settings-tab is-active" type="button" data-settings-tab="integrations" aria-selected="true">
+            <i data-lucide="plug"></i>
+            Integrações
+          </button>
+          <button class="settings-tab" type="button" data-settings-tab="rules" aria-selected="false">
+            <i data-lucide="list-filter"></i>
+            Regras
+          </button>
+          <button class="settings-tab" type="button" data-settings-tab="names" aria-selected="false">
+            <i data-lucide="tags"></i>
+            Nomes
+          </button>
+          <button class="settings-tab" type="button" data-settings-tab="standards" aria-selected="false">
+            <i data-lucide="copy-plus"></i>
+            Contas padrão
+          </button>
+          <button class="settings-tab" type="button" data-settings-tab="manual" aria-selected="false">
+            <i data-lucide="file-plus-2"></i>
+            Cadastrar conta
+          </button>
+        </nav>
+
+        <section class="settings-panel is-active" data-settings-panel="integrations">
+          <div class="settings-grid">
+            <label>
+              <span>Gmail</span>
+              <input id="gmailAccountInput" type="email" />
+            </label>
+            <label>
+              <span>Marcador</span>
+              <input id="gmailLabelInput" />
+            </label>
+            <label>
+              <span>Pasta do Drive</span>
+              <input id="driveFolderInput" />
+            </label>
+            <label>
+              <span>Meses para buscar</span>
+              <input id="monthsBackInput" type="number" min="1" max="60" />
+            </label>
+            <label>
+              <span>OAuth Client ID</span>
+              <input id="googleClientInput" />
+            </label>
+            <label>
+              <span>ID do dashboard</span>
+              <input id="profileInput" />
+            </label>
+            <label>
+              <span>Receita Luís Paulo</span>
+              <input id="incomeLuisInput" inputmode="decimal" />
+            </label>
+            <label>
+              <span>Receita Camila</span>
+              <input id="incomeCamilaInput" inputmode="decimal" />
+            </label>
+            <label class="full">
+              <span>Firebase config JSON</span>
+              <textarea id="firebaseConfigInput" spellcheck="false"></textarea>
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-panel rules-panel" data-settings-panel="rules">
+          <div class="rules-title">
+            <div>
+              <h3>Regras de extração</h3>
+              <p>As regras ativas determinam exatamente quais e-mails serão importados.</p>
+            </div>
+            <button class="secondary-button compact" id="newRuleButton" type="button">
+              <i data-lucide="plus"></i>
+              Nova regra
+            </button>
+          </div>
+
+          <article class="rule-card">
+            <header>
+              <label class="check-line">
+                <input type="checkbox" data-rule-field="nubankInvoice.enabled" />
+                <span>Nubank · Fatura</span>
+              </label>
+            </header>
+            <div class="rule-fields">
+              <label>
+                <span>E-mail</span>
+                <input data-rule-field="nubankInvoice.email" />
+              </label>
+              <label>
+                <span>Assunto</span>
+                <input data-rule-field="nubankInvoice.subject" />
+              </label>
+            </div>
+          </article>
+
+          <article class="rule-card">
+            <header>
+              <label class="check-line">
+                <input type="checkbox" data-rule-field="nubankPayment.enabled" />
+                <span>Nubank · Pagamento</span>
+              </label>
+            </header>
+            <div class="rule-fields">
+              <label>
+                <span>E-mail</span>
+                <input data-rule-field="nubankPayment.email" />
+              </label>
+              <label>
+                <span>Assunto</span>
+                <input data-rule-field="nubankPayment.subject" />
+              </label>
+            </div>
+          </article>
+
+          <article class="rule-card">
+            <header>
+              <label class="check-line">
+                <input type="checkbox" data-rule-field="sommaInvoice.enabled" />
+                <span>Somma · Boleto</span>
+              </label>
+            </header>
+            <div class="rule-fields">
+              <label>
+                <span>E-mail</span>
+                <input data-rule-field="sommaInvoice.email" />
+              </label>
+              <label>
+                <span>Assunto</span>
+                <input data-rule-field="sommaInvoice.subject" />
+              </label>
+            </div>
+          </article>
+
+          <article class="rule-card">
+            <header>
+              <label class="check-line">
+                <input type="checkbox" data-rule-field="sommaPayment.enabled" />
+                <span>Somma · Pagamento</span>
+              </label>
+            </header>
+            <div class="rule-fields">
+              <label>
+                <span>E-mail</span>
+                <input data-rule-field="sommaPayment.email" />
+              </label>
+              <label>
+                <span>Assunto</span>
+                <input data-rule-field="sommaPayment.subject" />
+              </label>
+            </div>
+          </article>
+
+          <article class="rule-card">
+            <header>
+              <label class="check-line">
+                <input type="checkbox" data-rule-field="iptuInvoice.enabled" />
+                <span>IPTU · Guia</span>
+              </label>
+            </header>
+            <div class="rule-fields">
+              <label>
+                <span>E-mail</span>
+                <input data-rule-field="iptuInvoice.email" />
+              </label>
+              <label>
+                <span>Assunto</span>
+                <input data-rule-field="iptuInvoice.subject" />
+              </label>
+            </div>
+          </article>
+
+          <article class="rule-card">
+            <header>
+              <label class="check-line">
+                <input type="checkbox" data-rule-field="claroInvoice.enabled" />
+                <span>Claro · Fatura</span>
+              </label>
+            </header>
+            <div class="rule-fields three">
+              <label>
+                <span>E-mail</span>
+                <input data-rule-field="claroInvoice.email" />
+              </label>
+              <label>
+                <span>Assunto</span>
+                <input data-rule-field="claroInvoice.subject" />
+              </label>
+              <label>
+                <span>Senha PDF</span>
+                <input data-rule-field="claroInvoice.attachmentPassword" />
+              </label>
+            </div>
+          </article>
+
+          <div class="custom-rules-list" id="customRulesList"></div>
+
+          <article class="rule-builder" id="ruleBuilder" hidden>
+            <header>
+              <div>
+                <h3>Nova regra de extração</h3>
+                <p>Configure a origem e onde encontrar os dados financeiros.</p>
+              </div>
+              <button class="icon-button ghost small" id="cancelNewRuleButton" type="button" title="Cancelar">
+                <i data-lucide="x"></i>
+              </button>
+            </header>
+            <div class="rule-builder-grid">
+              <label>
+                <span>Nome da regra</span>
+                <input id="newRuleLabelInput" placeholder="Ex.: CEEE · Energia" />
+              </label>
+              <label>
+                <span>Fornecedor</span>
+                <input id="newRuleProviderInput" placeholder="Ex.: CEEE" />
+              </label>
+              <label>
+                <span>Tipo de registro</span>
+                <select id="newRuleTypeInput">
+                  <option value="bill">Conta / fatura / boleto</option>
+                  <option value="proof">Comprovante de pagamento</option>
+                </select>
+              </label>
+              <label>
+                <span>Categoria</span>
+                <select id="newRuleCategoryInput"></select>
+              </label>
+              <label>
+                <span>E-mail do remetente</span>
+                <input id="newRuleEmailInput" type="email" placeholder="financeiro@fornecedor.com.br" />
+              </label>
+              <label>
+                <span>Assunto contém</span>
+                <input id="newRuleSubjectInput" placeholder="Texto identificador do assunto" />
+              </label>
+              <label>
+                <span>Senha do PDF</span>
+                <input id="newRulePasswordInput" placeholder="Opcional" />
+              </label>
+              <div class="rule-read-options">
+                <span>Ler informações em</span>
+                <label class="check-line">
+                  <input id="newRuleReadBodyInput" type="checkbox" checked />
+                  <span>Corpo do e-mail</span>
+                </label>
+                <label class="check-line">
+                  <input id="newRuleReadAttachmentsInput" type="checkbox" checked />
+                  <span>Anexos</span>
+                </label>
+              </div>
+            </div>
+            <div class="rule-builder-actions">
+              <span>A nova regra será aplicada a todo o período configurado.</span>
+              <button class="primary-button" id="saveNewRuleButton" type="button">
+                <i data-lucide="refresh-cw"></i>
+                Adicionar e sincronizar
+              </button>
+            </div>
+          </article>
+        </section>
+
+        <section class="settings-panel" data-settings-panel="names">
+          <div class="names-heading">
+            <h3>Nomes de exibição</h3>
+            <p>Altere como cada credor ou regra aparece no dashboard. Os dados originais continuam preservados para conciliação.</p>
+          </div>
+          <div class="display-names-list" id="displayNamesList"></div>
+        </section>
+
+        <section class="settings-panel standards-panel" data-settings-panel="standards">
+          <div class="rules-title">
+            <div>
+              <h3>Contas padrão</h3>
+              <p>Crie modelos para preencher rapidamente contas cadastradas manualmente.</p>
+            </div>
+            <button class="secondary-button compact" id="newStandardAccountButton" type="button">
+              <i data-lucide="plus"></i>
+              Nova conta padrão
+            </button>
+          </div>
+
+          <div class="standard-accounts-list" id="standardAccountsList"></div>
+
+          <article class="standard-account-builder" id="standardAccountBuilder" hidden>
+            <header>
+              <div>
+                <h3 id="standardAccountFormTitle">Nova conta padrão</h3>
+                <p>Informe apenas os dados que devem ser reaproveitados.</p>
+              </div>
+              <button class="icon-button ghost small" id="cancelStandardAccountButton" type="button" title="Cancelar">
+                <i data-lucide="x"></i>
+              </button>
+            </header>
+            <div class="standard-account-grid">
+              <label>
+                <span>Nome do modelo</span>
+                <input id="standardAccountNameInput" maxlength="80" placeholder="Ex.: Energia mensal" />
+              </label>
+              <label>
+                <span>Título da conta</span>
+                <input id="standardAccountTitleInput" maxlength="140" placeholder="Ex.: Conta de energia" />
+              </label>
+              <label class="full">
+                <span>Descrição</span>
+                <textarea id="standardAccountDescriptionInput" maxlength="2000" placeholder="Observações e informações adicionais"></textarea>
+              </label>
+              <label>
+                <span>Valor padrão</span>
+                <input id="standardAccountAmountInput" inputmode="decimal" placeholder="0,00" />
+              </label>
+              <label>
+                <span>Categoria</span>
+                <select id="standardAccountCategoryInput"></select>
+              </label>
+              <label>
+                <span>Dia do vencimento</span>
+                <input id="standardAccountDueDayInput" type="number" min="1" max="31" placeholder="Ex.: 10" />
+              </label>
+              <label>
+                <span>Periodicidade</span>
+                <select id="standardAccountRecurrenceIntervalInput">
+                  <option value="0">Não recorrente</option>
+                  <option value="1">Mensal</option>
+                  <option value="2">Bimestral</option>
+                  <option value="3">Trimestral</option>
+                  <option value="6">Semestral</option>
+                  <option value="12">Anual</option>
+                </select>
+              </label>
+            </div>
+            <div class="standard-account-actions">
+              <span>O vencimento será calculado conforme a competência escolhida no cadastro.</span>
+              <button class="primary-button" id="saveStandardAccountButton" type="button">
+                <i data-lucide="save"></i>
+                Salvar conta padrão
+              </button>
+            </div>
+          </article>
+        </section>
+
+        <section class="settings-panel" data-settings-panel="manual">
+          <div class="manual-form-heading">
+            <div>
+              <h3 id="manualFormTitle">Cadastrar conta manualmente</h3>
+              <p id="manualFormCaption">Preencha os dados da conta e, se necessário, configure a recorrência.</p>
+            </div>
+            <button class="secondary-button compact" id="cancelManualEditButton" type="button" hidden>
+              <i data-lucide="x"></i>
+              Cancelar edição
+            </button>
+          </div>
+          <div class="manual-standard-picker" id="manualStandardPicker">
+            <label>
+              <span>Usar conta padrão</span>
+              <select id="manualStandardAccountInput"></select>
+            </label>
+            <button class="secondary-button compact" id="applyStandardAccountButton" type="button">
+              <i data-lucide="wand-sparkles"></i>
+              Aplicar modelo
+            </button>
+          </div>
+          <div class="manual-account-grid">
+            <label class="full">
+              <span>Título</span>
+              <input id="manualTitleInput" maxlength="140" placeholder="Ex.: Conta de energia" />
+            </label>
+            <label class="full">
+              <span>Descrição</span>
+              <textarea id="manualDescriptionInput" maxlength="2000" placeholder="Observações e informações adicionais"></textarea>
+            </label>
+            <label>
+              <span>Competência</span>
+              <input id="manualCompetencyInput" type="month" />
+            </label>
+            <label>
+              <span>Vencimento</span>
+              <input id="manualDueDateInput" type="date" />
+            </label>
+            <label>
+              <span>Valor</span>
+              <input id="manualAmountInput" inputmode="decimal" placeholder="0,00" />
+            </label>
+            <label>
+              <span>Categoria</span>
+              <select id="manualCategoryInput"></select>
+            </label>
+            <label class="check-line manual-paid-check">
+              <input id="manualRecurringInput" type="checkbox" />
+              <span>Conta recorrente</span>
+            </label>
+            <label>
+              <span>Periodicidade</span>
+              <select id="manualRecurrenceIntervalInput" disabled>
+                <option value="1">Mensal</option>
+                <option value="2">Bimestral</option>
+                <option value="3">Trimestral</option>
+                <option value="6">Semestral</option>
+                <option value="12">Anual</option>
+              </select>
+            </label>
+            <label class="upload-field">
+              <span>Fatura / guia / boleto</span>
+              <input id="manualInvoiceFileInput" type="file" accept=".pdf,image/*" />
+            </label>
+            <label class="upload-field">
+              <span>Comprovante de pagamento</span>
+              <input id="manualProofFileInput" type="file" accept=".pdf,image/*" />
+            </label>
+            <label class="check-line full manual-paid-check">
+              <input id="manualPaidInput" type="checkbox" />
+              <span>Marcar conta como paga</span>
+            </label>
+          </div>
+          <div class="manual-account-actions">
+            <span id="manualAccountHint">Os documentos serão enviados para a pasta do Drive configurada.</span>
+            <button class="primary-button" id="saveManualAccountButton" type="button">
+              <i data-lucide="file-plus-2"></i>
+              Cadastrar conta
+            </button>
+          </div>
+        </section>
+
+        <footer class="dialog-actions" id="settingsDialogActions">
+          <button class="secondary-button" id="connectGoogleButton" type="button">
+            <i data-lucide="key-round"></i>
+            Conectar Google
+          </button>
+          <button class="primary-button" id="saveSettingsButton" type="button">
+            <i data-lucide="save"></i>
+            Salvar
+          </button>
+        </footer>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    <script src="./config.js?v=20260610-27"></script>
+    <script type="module" src="./src/app.js?v=20260610-27"></script>
+  </body>
+</html>
