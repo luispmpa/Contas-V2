@@ -28,9 +28,31 @@ O projeto é HTML/CSS/JS estático. Ele não depende de um backend próprio e po
 
 As configurações iniciais ficam em `config.js`. Você também pode sobrescrever tudo pela janela Configurações do dashboard; nesse caso os valores ficam no navegador atual.
 
-## Publicar na web
+## Publicar no GitHub Pages
 
-O caminho recomendado é Firebase Hosting, porque o mesmo projeto já usa Firestore e Firebase Auth.
+O projeto é 100% estático (HTML/CSS/JS com caminhos relativos), então pode ser publicado direto no GitHub Pages, sem build.
+
+A publicação é automática via GitHub Actions (`.github/workflows/deploy-pages.yml`). Para ativar:
+
+1. No GitHub, vá em **Settings → Pages**.
+2. Em **Build and deployment → Source**, escolha **GitHub Actions**.
+3. Faça merge para o branch `main` (ou rode o workflow manualmente em **Actions → Deploy to GitHub Pages → Run workflow**).
+
+A cada push em `main` o site é republicado. A URL pública fica no formato:
+
+```text
+https://luispmpa.github.io/Contas-V2/
+```
+
+> Importante: depois do primeiro deploy, autorize essa URL pública nas origens
+> OAuth do Google Cloud e no domínio de autenticação do Firebase, senão o login
+> Google e a sincronização Gmail/Drive serão bloqueados pelo navegador.
+
+O arquivo `.nojekyll` garante que o GitHub Pages sirva todos os arquivos como estão, sem processamento Jekyll.
+
+## Publicar na web (Firebase Hosting)
+
+Alternativa ao GitHub Pages: Firebase Hosting, porque o mesmo projeto já usa Firestore e Firebase Auth.
 
 1. Crie um projeto no Firebase.
 2. Ative Authentication com provedor Google.
