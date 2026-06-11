@@ -29,7 +29,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="./styles.css?v=20260611-1" />
+    <link rel="stylesheet" href="./styles.css?v=20260611-2" />
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
@@ -433,6 +433,30 @@
               <div><dt>Categoria</dt><dd id="detailCategory">-</dd></div>
               <div><dt>Conciliação</dt><dd id="detailReconciliation">-</dd></div>
             </dl>
+          </section>
+
+          <section class="detail-section full quick-edit" id="detailActions">
+            <div class="quick-edit-head">
+              <h3>Ações rápidas</h3>
+              <button class="link-button" type="button" id="detailRevertButton" hidden>
+                <i data-lucide="rotate-ccw"></i>
+                Reverter ajustes
+              </button>
+            </div>
+            <div class="quick-edit-row">
+              <button class="primary-button compact" type="button" id="detailTogglePaidButton">
+                <i data-lucide="check-circle-2"></i>
+                <span>Marcar como pago</span>
+              </button>
+              <label class="quick-edit-category">
+                <span>Categoria</span>
+                <select id="detailCategorySelect"></select>
+              </label>
+            </div>
+            <p class="quick-edit-note" id="detailOverrideNote" hidden>
+              <i data-lucide="info"></i>
+              Ajuste manual aplicado — preservado nas próximas sincronizações.
+            </p>
           </section>
 
           <section class="detail-section full">
@@ -912,7 +936,7 @@
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-    <script src="./config.js?v=20260611-1"></script>
-    <script type="module" src="./src/app.js?v=20260611-1"></script>
+    <script src="./config.js?v=20260611-2"></script>
+    <script type="module" src="./src/app.js?v=20260611-2"></script>
   </body>
 </html>
