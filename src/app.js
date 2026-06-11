@@ -5,7 +5,7 @@ const OVERRIDES_KEY = "contasDomesticas.overrides.v1";
 const STANDARD_ACCOUNTS_KEY = "contasDomesticas.standardAccounts.v1";
 const VIEW_KEY = "contasDomesticas.view.v1";
 const THEME_KEY = "contas-theme";
-const APP_VERSION = "20260611-28";
+const APP_VERSION = "20260611-29";
 const MANUAL_RECURRENCE_HORIZON_MONTHS = 36;
 
 const GOOGLE_SCOPES = [
@@ -247,20 +247,31 @@ const els = {
   nubankInvoiceCaption: document.querySelector("#nubankInvoiceCaption"),
   nubankMetricTotal: document.querySelector("#nubankMetricTotal"),
   nubankMetricTotalHint: document.querySelector("#nubankMetricTotalHint"),
+  nubankMetricTotalCard: document.querySelector("#nubankMetricTotalCard"),
   nubankMetricAverage: document.querySelector("#nubankMetricAverage"),
   nubankMetricAverageHint: document.querySelector("#nubankMetricAverageHint"),
+  nubankMetricAverageCard: document.querySelector("#nubankMetricAverageCard"),
   nubankMetricLargest: document.querySelector("#nubankMetricLargest"),
   nubankMetricLargestHint: document.querySelector("#nubankMetricLargestHint"),
+  nubankMetricLargestCard: document.querySelector("#nubankMetricLargestCard"),
   nubankMetricInstallments: document.querySelector("#nubankMetricInstallments"),
   nubankMetricInstallmentsHint: document.querySelector("#nubankMetricInstallmentsHint"),
+  nubankMetricInstallmentsCard: document.querySelector("#nubankMetricInstallmentsCard"),
   nubankDailyChart: document.querySelector("#nubankDailyChart"),
   nubankCategoryChart: document.querySelector("#nubankCategoryChart"),
   nubankCategoryFilter: document.querySelector("#nubankCategoryFilter"),
   nubankSearchInput: document.querySelector("#nubankSearchInput"),
+  nubankSortSelect: document.querySelector("#nubankSortSelect"),
+  nubankSortDirection: document.querySelector("#nubankSortDirection"),
   nubankTransactionsBody: document.querySelector("#nubankTransactionsBody"),
   nubankTableCaption: document.querySelector("#nubankTableCaption"),
   nubankEmptyState: document.querySelector("#nubankEmptyState"),
   nubankInsightsList: document.querySelector("#nubankInsightsList"),
+  nubankDetailDialog: document.querySelector("#nubankDetailDialog"),
+  nubankDetailTitle: document.querySelector("#nubankDetailTitle"),
+  nubankDetailCaption: document.querySelector("#nubankDetailCaption"),
+  nubankDetailSummary: document.querySelector("#nubankDetailSummary"),
+  nubankDetailBody: document.querySelector("#nubankDetailBody"),
   searchResultsDialog: document.querySelector("#searchResultsDialog"),
   searchResultsTitle: document.querySelector("#searchResultsTitle"),
   searchResultsCaption: document.querySelector("#searchResultsCaption"),
@@ -397,6 +408,8 @@ const state = {
   nubankFilters: {
     category: "all",
     search: "",
+    sort: ["date", "amount", "merchant", "category"].includes(VIEW_PREFS.nubankSort) ? VIEW_PREFS.nubankSort : "date",
+    direction: VIEW_PREFS.nubankDirection === "asc" ? "asc" : "desc",
   },
   chartRange: typeof VIEW_PREFS.chartRange === "string" ? VIEW_PREFS.chartRange : "12",
   isSyncing: false,
@@ -555,6 +568,20 @@ function bindEvents() {
     state.nubankFilters.search = normalizeText(els.nubankSearchInput.value);
     renderNubankTable();
   });
+  els.nubankSortSelect.addEventListener("change", () => {
+    state.nubankFilters.sort = els.nubankSortSelect.value;
+    saveViewPrefs();
+    renderNubankTable();
+  });
+  els.nubankSortDirection.addEventListener("change", () => {
+    state.nubankFilters.direction = els.nubankSortDirection.value;
+    saveViewPrefs();
+    renderNubankTable();
+  });
+  bindDrilldownCard(els.nubankMetricTotalCard, () => openNubankMetricDetail("total"));
+  bindDrilldownCard(els.nubankMetricAverageCard, () => openNubankMetricDetail("average"));
+  bindDrilldownCard(els.nubankMetricLargestCard, () => openNubankMetricDetail("largest"));
+  bindDrilldownCard(els.nubankMetricInstallmentsCard, () => openNubankMetricDetail("installments"));
   els.settingsButton.addEventListener("click", openSettings);
   els.incomeSettingsButton.addEventListener("click", openIncomeSettings);
   els.settingsTabs.forEach((button) => {
@@ -687,12 +714,16 @@ function saveViewPrefs() {
     status: state.filters.status,
     chartRange: state.chartRange,
     selectedMonth: state.selectedMonth,
+    nubankSort: state.nubankFilters.sort,
+    nubankDirection: state.nubankFilters.direction,
   });
 }
 
 function applyViewPrefsToControls() {
   if (els.statusFilter) els.statusFilter.value = state.filters.status;
   if (els.chartRangeSelect) els.chartRangeSelect.value = state.chartRange;
+  if (els.nubankSortSelect) els.nubankSortSelect.value = state.nubankFilters.sort;
+  if (els.nubankSortDirection) els.nubankSortDirection.value = state.nubankFilters.direction;
 }
 
 function normalizeStandardAccounts(value = []) {
@@ -2268,7 +2299,7 @@ function parseNubankInvoiceTransactions(text, { dueDate = "", messageId = "" } =
 
     const dateLabel = dateMatch[0];
     const description = cleanNubankTransactionDescription(candidate.slice(dateLabel.length, amountMatch.index));
-    if (!description || isNubankInvoiceSummaryLine(description)) continue;
+    if (!description || isNubankInvoiceSummaryLine(description) || !isNubankPurchaseDescription(description)) continue;
 
     const date = buildNubankTransactionDate(Number(dateMatch[1]), dateMatch[2], dueDate);
     const installment = findNubankTransactionInstallment(description);
@@ -2297,8 +2328,23 @@ function cleanNubankTransactionDescription(value) {
 }
 
 function isNubankInvoiceSummaryLine(value) {
-  return /\b(total(?: da fatura| de compras)?|pagamento recebido|pagamento efetuado|limite disponivel|limite total|saldo anterior|fatura fechada|valor total|subtotal|vencimento|melhor dia de compra|resumo da fatura)\b/i.test(
+  return /\b(total(?: da fatura| de compras)?|pagamento|limite disponivel|limite total|saldo anterior|fatura fechada|valor total|subtotal|vencimento|melhor dia de compra|resumo da fatura|credito recebido|estorno|ajuste a credito)\b/i.test(
     value,
+  );
+}
+
+function isNubankPurchaseDescription(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) return false;
+  return !/\b(pagamento|fatura paga|credito recebido|estorno|ajuste a credito|saldo anterior|total da fatura|total de compras|limite disponivel|encargos da fatura)\b/.test(
+    normalized,
+  );
+}
+
+function isNubankPurchaseTransaction(transaction) {
+  return (
+    Number(transaction?.amount || 0) > 0 &&
+    isNubankPurchaseDescription(`${transaction?.merchant || ""} ${transaction?.description || ""}`)
   );
 }
 
@@ -3294,7 +3340,7 @@ function sanitizeNubankTransactions(transactions) {
       category: String(transaction?.category || "Outros"),
       installment: String(transaction?.installment || ""),
     }))
-    .filter((transaction) => transaction.date && transaction.merchant && transaction.amount > 0);
+    .filter((transaction) => transaction.date && transaction.merchant && isNubankPurchaseTransaction(transaction));
 }
 
 function normalizeRecordStatus(record) {
@@ -3977,23 +4023,113 @@ function renderNubankTable() {
   const transactions = getNubankTransactions()
     .filter((transaction) => state.nubankFilters.category === "all" || transaction.category === state.nubankFilters.category)
     .filter((transaction) => !state.nubankFilters.search || normalizeText(transaction.description).includes(state.nubankFilters.search))
-    .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount);
+    .sort(compareNubankTransactions);
 
-  els.nubankTransactionsBody.innerHTML = transactions
+  els.nubankTransactionsBody.innerHTML = renderNubankTransactionRows(transactions);
+  els.nubankEmptyState.hidden = transactions.length > 0;
+  els.nubankTableCaption.textContent = `${transactions.length} ${transactions.length === 1 ? "compra" : "compras"} em ${formatMonth(state.selectedMonth)}`;
+}
+
+function compareNubankTransactions(a, b) {
+  const direction = state.nubankFilters.direction === "asc" ? 1 : -1;
+  const comparisons = {
+    amount: () => a.amount - b.amount,
+    merchant: () => a.merchant.localeCompare(b.merchant, "pt-BR"),
+    category: () => a.category.localeCompare(b.category, "pt-BR"),
+    date: () => a.date.localeCompare(b.date),
+  };
+  const comparison = (comparisons[state.nubankFilters.sort] || comparisons.date)();
+  return comparison * direction || b.amount - a.amount || a.merchant.localeCompare(b.merchant, "pt-BR");
+}
+
+function renderNubankTransactionRows(transactions) {
+  return transactions
     .map(
       (transaction) => `
         <tr>
           <td data-label="Data">${escapeHtml(formatDate(transaction.date))}</td>
           <td data-label="Estabelecimento" title="${escapeAttribute(transaction.description)}">${escapeHtml(transaction.merchant)}</td>
           <td data-label="Categoria"><span class="nubank-category-pill">${escapeHtml(transaction.category)}</span></td>
-          <td data-label="Parcela">${escapeHtml(transaction.installment || "À vista")}</td>
+          <td data-label="Parcela">${escapeHtml(formatNubankInstallment(transaction))}</td>
           <td data-label="Valor" class="numeric">${escapeHtml(formatCurrency(transaction.amount))}</td>
         </tr>
       `,
     )
     .join("");
-  els.nubankEmptyState.hidden = transactions.length > 0;
-  els.nubankTableCaption.textContent = `${transactions.length} ${transactions.length === 1 ? "compra" : "compras"} em ${formatMonth(state.selectedMonth)}`;
+}
+
+function formatNubankInstallment(transaction) {
+  if (!transaction.installment) return "À vista";
+  const remaining = getNubankRemainingInstallments(transaction);
+  return remaining > 0 ? `${transaction.installment} · faltam ${remaining}` : transaction.installment;
+}
+
+function getNubankRemainingInstallments(transaction) {
+  const match = String(transaction?.installment || "").match(/^(\d{1,2})\/(\d{1,2})$/);
+  return match ? Math.max(0, Number(match[2]) - Number(match[1])) : 0;
+}
+
+function openNubankMetricDetail(kind) {
+  const transactions = getNubankTransactions();
+  const total = sum(transactions, "amount");
+  const average = transactions.length ? total / transactions.length : 0;
+  const largest = [...transactions].sort((a, b) => b.amount - a.amount)[0];
+  const installments = transactions.filter((transaction) => transaction.installment);
+  let detailTransactions = transactions;
+  let title = "Compras identificadas";
+  let caption = `${transactions.length} compras válidas, sem pagamentos de fatura`;
+  let summary = [
+    { label: "Total", value: formatCurrency(total) },
+    { label: "Compras", value: String(transactions.length) },
+  ];
+
+  if (kind === "average") {
+    title = "Composição do ticket médio";
+    caption = "Todas as compras consideradas no cálculo";
+    summary = [
+      { label: "Ticket médio", value: formatCurrency(average) },
+      { label: "Total", value: formatCurrency(total) },
+      { label: "Compras", value: String(transactions.length) },
+    ];
+  } else if (kind === "largest") {
+    title = "Maior compra";
+    detailTransactions = largest ? [largest] : [];
+    caption = largest ? `${largest.merchant} · ${formatDate(largest.date)}` : "Nenhuma compra identificada";
+    summary = largest
+      ? [
+          { label: "Valor", value: formatCurrency(largest.amount) },
+          { label: "Categoria", value: largest.category },
+          { label: "Parcela", value: formatNubankInstallment(largest) },
+        ]
+      : [];
+  } else if (kind === "installments") {
+    title = "Compras parceladas";
+    detailTransactions = installments;
+    const futureInstallments = installments.reduce((count, transaction) => count + getNubankRemainingInstallments(transaction), 0);
+    const estimatedFuture = installments.reduce(
+      (amount, transaction) => amount + transaction.amount * getNubankRemainingInstallments(transaction),
+      0,
+    );
+    caption = "Parcelas presentes nesta fatura e projeção das restantes";
+    summary = [
+      { label: "Nesta fatura", value: formatCurrency(sum(installments, "amount")) },
+      { label: "Parcelas atuais", value: String(installments.length) },
+      { label: "Parcelas futuras", value: String(futureInstallments) },
+      { label: "Saldo futuro estimado", value: formatCurrency(estimatedFuture) },
+    ];
+  }
+
+  detailTransactions = [...detailTransactions].sort(compareNubankTransactions);
+  els.nubankDetailTitle.textContent = title;
+  els.nubankDetailCaption.textContent = `${formatMonth(state.selectedMonth)} · ${caption}`;
+  els.nubankDetailSummary.innerHTML = summary
+    .map((item) => `<div><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`)
+    .join("");
+  els.nubankDetailBody.innerHTML =
+    renderNubankTransactionRows(detailTransactions) ||
+    `<tr><td colspan="5" class="nubank-detail-empty">Nenhuma compra encontrada para este detalhamento.</td></tr>`;
+  els.nubankDetailDialog.showModal();
+  window.lucide?.createIcons();
 }
 
 function renderNubankInsights(invoices, transactions) {

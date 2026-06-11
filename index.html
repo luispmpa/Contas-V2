@@ -29,7 +29,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="./styles.css?v=20260611-28" />
+    <link rel="stylesheet" href="./styles.css?v=20260611-29" />
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
@@ -299,22 +299,22 @@
           </section>
 
           <section class="metrics-grid nubank-metrics" aria-label="Resumo da fatura Nubank">
-            <article class="metric-card nubank-total">
+            <article class="metric-card nubank-total is-clickable" id="nubankMetricTotalCard" role="button" tabindex="0" title="Detalhar compras identificadas">
               <span>Compras identificadas</span>
               <strong id="nubankMetricTotal">R$ 0,00</strong>
               <small id="nubankMetricTotalHint">Nenhuma compra extraída</small>
             </article>
-            <article class="metric-card nubank-average">
+            <article class="metric-card nubank-average is-clickable" id="nubankMetricAverageCard" role="button" tabindex="0" title="Detalhar composição do ticket médio">
               <span>Ticket médio</span>
               <strong id="nubankMetricAverage">R$ 0,00</strong>
               <small id="nubankMetricAverageHint">Por compra</small>
             </article>
-            <article class="metric-card nubank-largest">
+            <article class="metric-card nubank-largest is-clickable" id="nubankMetricLargestCard" role="button" tabindex="0" title="Abrir maior compra">
               <span>Maior compra</span>
               <strong id="nubankMetricLargest">R$ 0,00</strong>
               <small id="nubankMetricLargestHint">Sem dados</small>
             </article>
-            <article class="metric-card nubank-installments">
+            <article class="metric-card nubank-installments is-clickable" id="nubankMetricInstallmentsCard" role="button" tabindex="0" title="Detalhar compras parceladas">
               <span>Compras parceladas</span>
               <strong id="nubankMetricInstallments">R$ 0,00</strong>
               <small id="nubankMetricInstallmentsHint">Nenhuma parcela identificada</small>
@@ -364,6 +364,22 @@
                     <span>Busca</span>
                     <input id="nubankSearchInput" type="search" autocomplete="off" placeholder="Estabelecimento..." />
                   </label>
+                  <label class="filter-control">
+                    <span>Ordenar por</span>
+                    <select id="nubankSortSelect">
+                      <option value="date">Data</option>
+                      <option value="amount">Valor</option>
+                      <option value="merchant">Estabelecimento</option>
+                      <option value="category">Categoria</option>
+                    </select>
+                  </label>
+                  <label class="filter-control">
+                    <span>Ordem</span>
+                    <select id="nubankSortDirection">
+                      <option value="desc">Decrescente</option>
+                      <option value="asc">Crescente</option>
+                    </select>
+                  </label>
                 </div>
               </div>
               <div class="table-wrap">
@@ -408,6 +424,36 @@
     <button class="fab-sync" id="fabSyncButton" type="button" title="Sincronizar" aria-label="Sincronizar Gmail e Drive">
       <i data-lucide="refresh-cw"></i>
     </button>
+
+    <dialog class="dialog nubank-detail-dialog" id="nubankDetailDialog">
+      <form method="dialog" class="dialog-shell nubank-detail-shell">
+        <header class="dialog-header">
+          <div>
+            <span class="badge nubank-badge">Nubank</span>
+            <h2 id="nubankDetailTitle">Detalhamento</h2>
+            <p id="nubankDetailCaption"></p>
+          </div>
+          <button class="icon-button ghost" value="cancel" title="Fechar">
+            <i data-lucide="x"></i>
+          </button>
+        </header>
+        <div class="nubank-detail-summary" id="nubankDetailSummary"></div>
+        <div class="nubank-detail-table-wrap">
+          <table class="nubank-detail-table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Estabelecimento</th>
+                <th>Categoria</th>
+                <th>Parcela</th>
+                <th class="numeric">Valor</th>
+              </tr>
+            </thead>
+            <tbody id="nubankDetailBody"></tbody>
+          </table>
+        </div>
+      </form>
+    </dialog>
 
     <dialog class="dialog search-results-dialog" id="searchResultsDialog">
       <form method="dialog" class="dialog-shell search-results-shell">
@@ -1062,7 +1108,7 @@
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-    <script src="./config.js?v=20260611-28"></script>
-    <script type="module" src="./src/app.js?v=20260611-28"></script>
+    <script src="./config.js?v=20260611-29"></script>
+    <script type="module" src="./src/app.js?v=20260611-29"></script>
   </body>
 </html>

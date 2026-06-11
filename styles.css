@@ -645,6 +645,82 @@ textarea:focus {
   width: 130px;
 }
 
+.nubank-detail-dialog {
+  width: min(1040px, calc(100vw - 28px));
+}
+
+.nubank-detail-shell {
+  gap: 14px;
+}
+
+.nubank-badge {
+  color: #fff;
+  background: #820ad1;
+}
+
+.nubank-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.nubank-detail-summary div {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid #e7d3f4;
+  border-radius: var(--radius);
+  background: #fcf8ff;
+}
+
+.nubank-detail-summary span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.nubank-detail-summary strong {
+  font-size: 1.08rem;
+}
+
+.nubank-detail-table-wrap {
+  max-height: min(62vh, 600px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.nubank-detail-table {
+  min-width: 760px;
+}
+
+.nubank-detail-table th:first-child,
+.nubank-detail-table td:first-child {
+  width: 104px;
+}
+
+.nubank-detail-table th:nth-child(4),
+.nubank-detail-table td:nth-child(4) {
+  width: 150px;
+}
+
+.nubank-detail-table th:last-child,
+.nubank-detail-table td:last-child {
+  width: 130px;
+}
+
+.nubank-detail-empty {
+  padding: 28px 14px;
+  color: var(--muted);
+  text-align: center;
+}
+
+:root[data-theme="dark"] .nubank-detail-summary div {
+  border-color: rgba(178, 75, 243, 0.3);
+  background: rgba(130, 10, 209, 0.1);
+}
+
 .panel {
   min-width: 0;
 }
