@@ -5,7 +5,7 @@ const OVERRIDES_KEY = "contasDomesticas.overrides.v1";
 const STANDARD_ACCOUNTS_KEY = "contasDomesticas.standardAccounts.v1";
 const VIEW_KEY = "contasDomesticas.view.v1";
 const THEME_KEY = "contas-theme";
-const APP_VERSION = "20260611-31";
+const APP_VERSION = "20260611-32";
 const MANUAL_RECURRENCE_HORIZON_MONTHS = 36;
 
 const GOOGLE_SCOPES = [
@@ -181,6 +181,8 @@ const NUBANK_CATEGORY_RULES = [
   { category: "Educação", regex: /\b(escola|curso|udemy|alura|faculdade|universidade|livro)\b/i },
   { category: "Financeiro", regex: /\b(iof|juros|multa|encargo|anuidade|tarifa)\b/i },
 ];
+const NUBANK_STATEMENT_SUMMARY_REGEX =
+  /\b(?:total(?: da fatura| de compras)?|pagamentos?|fatura paga|credito recebido|ajuste a credito|saldo (?:anterior|em atraso|em aberto|devedor|financiado|remanescente|restante|total)|valor (?:em aberto|pendente|total)|fatura anterior|limite (?:disponivel|total)|subtotal|vencimento|melhor dia de compra|resumo da fatura|pagamento minimo|minimo da fatura|credito rotativo)\b/i;
 const AUTOCOMPLETE_LIMIT = 12;
 
 const BILL_DOCUMENT_REGEX =
@@ -2343,9 +2345,7 @@ function cleanNubankTransactionDescription(value) {
 }
 
 function isNubankInvoiceSummaryLine(value) {
-  return /\b(total(?: da fatura| de compras)?|pagamento|limite disponivel|limite total|saldo anterior|fatura fechada|valor total|subtotal|vencimento|melhor dia de compra|resumo da fatura|credito recebido|estorno|ajuste a credito)\b/i.test(
-    value,
-  );
+  return NUBANK_STATEMENT_SUMMARY_REGEX.test(normalizeText(value)) || /\b(?:fatura fechada|estorno)\b/i.test(normalizeText(value));
 }
 
 function selectNubankPurchaseAmount(candidate, amountMatches) {
@@ -2366,9 +2366,7 @@ function selectNubankPurchaseAmount(candidate, amountMatches) {
 function isNubankPurchaseDescription(value) {
   const normalized = normalizeText(value);
   if (!normalized) return false;
-  return !/\b(pagamento|fatura paga|credito recebido|estorno|ajuste a credito|saldo anterior|total da fatura|total de compras|limite disponivel|encargos da fatura)\b/.test(
-    normalized,
-  );
+  return !NUBANK_STATEMENT_SUMMARY_REGEX.test(normalized) && !/\b(?:estorno|encargos da fatura)\b/.test(normalized);
 }
 
 function isNubankPurchaseTransaction(transaction) {
@@ -4348,7 +4346,7 @@ function renderNubankEvolutionChart() {
     button.setAttribute("aria-pressed", String(active));
   });
   els.nubankEvolutionTitle.textContent = monthly ? "Evolução mensal das faturas" : "Gastos ao longo da fatura";
-  els.nubankEvolutionCaption.textContent = monthly ? "Valor final da fatura comparado às compras identificadas" : "Compras agrupadas por dia";
+  els.nubankEvolutionCaption.textContent = monthly ? "Valor final da fatura comparado ao valor pago" : "Compras agrupadas por dia";
   if (monthly) {
     renderNubankMonthlyChart();
   } else {
@@ -4393,7 +4391,9 @@ function renderNubankMonthlyChart() {
   const invoiceValues = months.length
     ? months.map((month) => sum(invoices.filter((invoice) => invoice.monthKey === month), "amount"))
     : [0];
-  const purchaseValues = months.length ? months.map((month) => sum(getNubankTransactions(month), "amount")) : [0];
+  const paidValues = months.length
+    ? months.map((month) => sum(invoices.filter((invoice) => invoice.monthKey === month && invoice.status === "paid"), "amount"))
+    : [0];
 
   if (state.charts.nubankDaily) state.charts.nubankDaily.destroy();
   state.charts.nubankDaily = new window.Chart(els.nubankDailyChart, {
@@ -4412,8 +4412,8 @@ function renderNubankMonthlyChart() {
         },
         {
           type: "line",
-          label: "Compras identificadas",
-          data: purchaseValues,
+          label: "Valor pago",
+          data: paidValues,
           borderColor: "#b24bf3",
           backgroundColor: "#b24bf3",
           borderWidth: 3,
