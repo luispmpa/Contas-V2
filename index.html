@@ -2,8 +2,33 @@
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Contas domésticas</title>
+    <meta name="description" content="Dashboard de contas domésticas com divisão proporcional por receita." />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#16836e" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Contas" />
+    <script>
+      // Aplica o tema salvo antes da primeira pintura para evitar flash.
+      (function () {
+        try {
+          var saved = localStorage.getItem("contas-theme");
+          var theme =
+            saved === "light" || saved === "dark"
+              ? saved
+              : window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          document.documentElement.dataset.theme = theme;
+        } catch (e) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="./styles.css?v=20260611-28" />
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
@@ -33,20 +58,30 @@
             <span>Mês</span>
             <select id="monthSelect"></select>
           </label>
-          <button class="icon-button" id="syncButton" type="button" title="Sincronizar Gmail e Drive">
+          <button class="icon-button" id="syncButton" type="button" title="Sincronizar Gmail e Drive" aria-label="Sincronizar Gmail e Drive">
             <i data-lucide="refresh-cw"></i>
+            <span class="icon-label">Sincronizar</span>
           </button>
-          <button class="icon-button" id="exportButton" type="button" title="Exportar CSV">
+          <button class="icon-button" id="exportButton" type="button" title="Exportar CSV" aria-label="Exportar CSV">
             <i data-lucide="download"></i>
+            <span class="icon-label">Exportar</span>
           </button>
-          <button class="icon-button" id="auditToggleButton" type="button" title="Auditoria mensal" aria-expanded="false">
+          <button class="icon-button" id="auditToggleButton" type="button" title="Auditoria mensal" aria-label="Auditoria mensal" aria-expanded="false">
             <i data-lucide="table-2"></i>
+            <span class="icon-label">Auditoria</span>
           </button>
-          <button class="icon-button" id="allRecordsButton" type="button" title="Todos os registros">
+          <button class="icon-button" id="allRecordsButton" type="button" title="Todos os registros" aria-label="Todos os registros">
             <i data-lucide="database"></i>
+            <span class="icon-label">Registros</span>
           </button>
-          <button class="icon-button" id="settingsButton" type="button" title="Configurações">
+          <button class="icon-button theme-toggle" id="themeToggleButton" type="button" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro">
+            <i data-lucide="sun" class="sun"></i>
+            <i data-lucide="moon" class="moon"></i>
+            <span class="icon-label">Tema</span>
+          </button>
+          <button class="icon-button" id="settingsButton" type="button" title="Configurações" aria-label="Configurações">
             <i data-lucide="settings"></i>
+            <span class="icon-label">Config</span>
           </button>
         </div>
       </header>
@@ -366,6 +401,14 @@
       </main>
     </div>
 
+    <div class="pull-indicator" id="pullIndicator" aria-hidden="true">
+      <i data-lucide="arrow-down"></i>
+    </div>
+
+    <button class="fab-sync" id="fabSyncButton" type="button" title="Sincronizar" aria-label="Sincronizar Gmail e Drive">
+      <i data-lucide="refresh-cw"></i>
+    </button>
+
     <dialog class="dialog search-results-dialog" id="searchResultsDialog">
       <form method="dialog" class="dialog-shell search-results-shell">
         <header class="dialog-header">
@@ -518,6 +561,30 @@
             </dl>
           </section>
 
+          <section class="detail-section full quick-edit" id="detailActions">
+            <div class="quick-edit-head">
+              <h3>Ações rápidas</h3>
+              <button class="link-button" type="button" id="detailRevertButton" hidden>
+                <i data-lucide="rotate-ccw"></i>
+                Reverter ajustes
+              </button>
+            </div>
+            <div class="quick-edit-row">
+              <button class="primary-button compact" type="button" id="detailTogglePaidButton">
+                <i data-lucide="check-circle-2"></i>
+                <span>Marcar como pago</span>
+              </button>
+              <label class="quick-edit-category">
+                <span>Categoria</span>
+                <select id="detailCategorySelect"></select>
+              </label>
+            </div>
+            <p class="quick-edit-note" id="detailOverrideNote" hidden>
+              <i data-lucide="info"></i>
+              Ajuste manual aplicado — preservado nas próximas sincronizações.
+            </p>
+          </section>
+
           <section class="detail-section full">
             <h3>Anexos</h3>
             <div class="attachment-list" id="detailAttachments"></div>
@@ -611,10 +678,16 @@
               <span>Receita Camila</span>
               <input id="incomeCamilaInput" inputmode="decimal" />
             </label>
-            <label class="full">
-              <span>Firebase config JSON</span>
-              <textarea id="firebaseConfigInput" spellcheck="false"></textarea>
-            </label>
+            <details class="advanced-settings">
+              <summary>
+                <i data-lucide="sliders-horizontal"></i>
+                Avançado — Firebase config JSON
+              </summary>
+              <div class="advanced-body">
+                <span>Firebase config JSON</span>
+                <textarea id="firebaseConfigInput" spellcheck="false"></textarea>
+              </div>
+            </details>
           </div>
         </section>
 

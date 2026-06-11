@@ -3,6 +3,8 @@ const RECORDS_KEY = "contasDomesticas.records.v1";
 const DRIVE_KEY = "contasDomesticas.drive.v1";
 const OVERRIDES_KEY = "contasDomesticas.overrides.v1";
 const STANDARD_ACCOUNTS_KEY = "contasDomesticas.standardAccounts.v1";
+const VIEW_KEY = "contasDomesticas.view.v1";
+const THEME_KEY = "contas-theme";
 const APP_VERSION = "20260611-28";
 const MANUAL_RECURRENCE_HORIZON_MONTHS = 36;
 
@@ -195,6 +197,9 @@ const els = {
   dashboardPanels: Array.from(document.querySelectorAll("[data-dashboard-panel]")),
   monthSelect: document.querySelector("#monthSelect"),
   syncButton: document.querySelector("#syncButton"),
+  fabSyncButton: document.querySelector("#fabSyncButton"),
+  themeToggleButton: document.querySelector("#themeToggleButton"),
+  pullIndicator: document.querySelector("#pullIndicator"),
   exportButton: document.querySelector("#exportButton"),
   auditToggleButton: document.querySelector("#auditToggleButton"),
   allRecordsButton: document.querySelector("#allRecordsButton"),
@@ -288,6 +293,11 @@ const els = {
   detailSources: document.querySelector("#detailSources"),
   detailEvidence: document.querySelector("#detailEvidence"),
   detailProofs: document.querySelector("#detailProofs"),
+  detailActions: document.querySelector("#detailActions"),
+  detailTogglePaidButton: document.querySelector("#detailTogglePaidButton"),
+  detailCategorySelect: document.querySelector("#detailCategorySelect"),
+  detailRevertButton: document.querySelector("#detailRevertButton"),
+  detailOverrideNote: document.querySelector("#detailOverrideNote"),
   editManualAccountButton: document.querySelector("#editManualAccountButton"),
   settingsDialog: document.querySelector("#settingsDialog"),
   gmailAccountInput: document.querySelector("#gmailAccountInput"),
@@ -354,14 +364,16 @@ const els = {
   toast: document.querySelector("#toast"),
 };
 
+const VIEW_PREFS = readJSON(VIEW_KEY, {});
+
 const state = {
   config: loadConfig(),
   records: readJSON(RECORDS_KEY, []),
   driveFiles: readJSON(DRIVE_KEY, []),
   overrides: readJSON(OVERRIDES_KEY, {}),
   standardAccounts: normalizeStandardAccounts(readJSON(STANDARD_ACCOUNTS_KEY, [])),
-  selectedMonth: "",
-  activeDashboard: "household",
+  activeDashboard: VIEW_PREFS.activeDashboard === "nubank" ? "nubank" : "household",
+  selectedMonth: typeof VIEW_PREFS.selectedMonth === "string" ? VIEW_PREFS.selectedMonth : "",
   selectedRecordId: "",
   googleAccessToken: "",
   googleTokenClient: null,
@@ -376,17 +388,17 @@ const state = {
     nubankCategory: null,
   },
   filters: {
-    status: "all",
+    status: typeof VIEW_PREFS.status === "string" ? VIEW_PREFS.status : "all",
     search: "",
     recordIds: [],
   },
   searchOptions: [],
   auditVisible: false,
-  chartRange: "12",
   nubankFilters: {
     category: "all",
     search: "",
   },
+  chartRange: typeof VIEW_PREFS.chartRange === "string" ? VIEW_PREFS.chartRange : "12",
   isSyncing: false,
   settingsTab: "integrations",
   editingManualRecordId: "",
@@ -407,12 +419,114 @@ init();
 function init() {
   document.documentElement.dataset.appVersion = APP_VERSION;
   console.info(`Dashboard Contas ${APP_VERSION}`);
+  setupTheme();
   populateSettingsForm();
   populateManualAccountForm();
   bindEvents();
+  applyViewPrefsToControls();
+  setupPullToRefresh();
+  registerServiceWorker();
   connectFirebaseFromConfig();
   render();
   window.lucide?.createIcons();
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  if (location.protocol !== "https:" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch((error) => {
+      console.warn("Service worker não registrado:", error.message);
+    });
+  });
+}
+
+function setupTheme() {
+  const stored = localStorage.getItem(THEME_KEY);
+  const theme = stored === "light" || stored === "dark" ? stored : document.documentElement.dataset.theme || "light";
+  applyTheme(theme);
+}
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  const meta = document.querySelector('meta[name="theme-color"]:not([media])') || null;
+  if (meta) meta.setAttribute("content", theme === "dark" ? "#0f1714" : "#16836e");
+  if (els.themeToggleButton) {
+    els.themeToggleButton.setAttribute("aria-pressed", String(theme === "dark"));
+  }
+}
+
+function toggleTheme() {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
+  renderCharts();
+}
+
+function themeColor(name, fallback = "#64736d") {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+function setupPullToRefresh() {
+  const indicator = els.pullIndicator;
+  if (!indicator) return;
+  const scroller = document.scrollingElement || document.documentElement;
+  const THRESHOLD = 70;
+  let startY = 0;
+  let distance = 0;
+  let pulling = false;
+
+  const reset = () => {
+    pulling = false;
+    distance = 0;
+    indicator.classList.remove("armed", "refreshing");
+    indicator.style.opacity = "0";
+    indicator.style.transform = "translateY(-60px)";
+  };
+
+  window.addEventListener(
+    "touchstart",
+    (event) => {
+      if (state.isSyncing || event.touches.length !== 1 || scroller.scrollTop > 0) return;
+      startY = event.touches[0].clientY;
+      distance = 0;
+      pulling = true;
+    },
+    { passive: true },
+  );
+
+  window.addEventListener(
+    "touchmove",
+    (event) => {
+      if (!pulling) return;
+      distance = event.touches[0].clientY - startY;
+      if (distance <= 0 || scroller.scrollTop > 0) {
+        reset();
+        return;
+      }
+      const pull = Math.min(distance, 110);
+      indicator.style.opacity = String(Math.min(pull / THRESHOLD, 1));
+      indicator.style.transform = `translateY(${Math.min(pull - 60, 14)}px)`;
+      indicator.classList.toggle("armed", pull >= THRESHOLD);
+    },
+    { passive: true },
+  );
+
+  window.addEventListener("touchend", () => {
+    if (!pulling) return;
+    const shouldRefresh = distance >= THRESHOLD;
+    pulling = false;
+    if (shouldRefresh && !state.isSyncing) {
+      indicator.classList.remove("armed");
+      indicator.classList.add("refreshing");
+      indicator.style.opacity = "1";
+      indicator.style.transform = "translateY(14px)";
+      Promise.resolve(syncSources()).finally(reset);
+    } else {
+      reset();
+    }
+  });
 }
 
 function bindEvents() {
@@ -421,6 +535,8 @@ function bindEvents() {
     button.addEventListener("click", () => selectDashboard(button.dataset.dashboardView));
   });
   els.syncButton.addEventListener("click", syncSources);
+  els.fabSyncButton?.addEventListener("click", syncSources);
+  els.themeToggleButton?.addEventListener("click", toggleTheme);
   els.exportButton.addEventListener("click", exportCurrentCsv);
   els.auditToggleButton.addEventListener("click", toggleAuditPanel);
   els.allRecordsButton.addEventListener("click", openAllRecords);
@@ -428,6 +544,7 @@ function bindEvents() {
   els.deleteSelectedRecordsButton.addEventListener("click", deleteSelectedRecords);
   els.chartRangeSelect.addEventListener("change", () => {
     state.chartRange = els.chartRangeSelect.value;
+    saveViewPrefs();
     renderEvolutionChart();
   });
   els.nubankCategoryFilter.addEventListener("change", () => {
@@ -449,6 +566,9 @@ function bindEvents() {
   els.manualRecurringInput.addEventListener("change", updateManualRecurrenceControls);
   els.manualCompetencyInput.addEventListener("change", updateManualDueDateFromSelectedStandard);
   els.cancelManualEditButton.addEventListener("click", resetManualAccountForm);
+  els.detailTogglePaidButton?.addEventListener("click", toggleDetailPaid);
+  els.detailCategorySelect?.addEventListener("change", changeDetailCategory);
+  els.detailRevertButton?.addEventListener("click", revertDetailOverride);
   els.editManualAccountButton.addEventListener("click", openManualRecordEditor);
   els.saveManualAccountButton.addEventListener("click", saveManualAccount);
   els.applyStandardAccountButton.addEventListener("click", applySelectedStandardAccount);
@@ -472,6 +592,7 @@ function bindEvents() {
   els.statusFilter.addEventListener("change", () => {
     state.filters.status = els.statusFilter.value;
     state.filters.recordIds = [];
+    saveViewPrefs();
     updateSearchSuggestions(els.searchInput, els.recordSuggestions, { scope: "current" });
     renderTable();
   });
@@ -504,6 +625,7 @@ function bindEvents() {
     }
     state.selectedMonth = els.monthSelect.value;
     state.filters.recordIds = [];
+    saveViewPrefs();
     render();
   });
   els.saveSettingsButton.addEventListener("click", saveSettings);
@@ -557,6 +679,20 @@ function readJSON(key, fallback) {
 
 function writeJSON(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+function saveViewPrefs() {
+  writeJSON(VIEW_KEY, {
+    activeDashboard: state.activeDashboard,
+    status: state.filters.status,
+    chartRange: state.chartRange,
+    selectedMonth: state.selectedMonth,
+  });
+}
+
+function applyViewPrefsToControls() {
+  if (els.statusFilter) els.statusFilter.value = state.filters.status;
+  if (els.chartRangeSelect) els.chartRangeSelect.value = state.chartRange;
 }
 
 function normalizeStandardAccounts(value = []) {
@@ -1573,6 +1709,8 @@ async function syncSources() {
 
   state.isSyncing = true;
   els.syncButton.classList.add("spinning");
+  els.fabSyncButton?.classList.add("spinning");
+  showSkeletons();
   renderConnectionStatus("Sincronizando Google...", "warn");
 
   try {
@@ -1593,7 +1731,6 @@ async function syncSources() {
     writeJSON(DRIVE_KEY, state.driveFiles);
     writeJSON(CONFIG_KEY, state.config);
     await persistRecordsToFirebase(state.records, previousRecordIds);
-    render();
     const billsCount = state.records.filter((record) => record.recordType === "bill").length;
     const proofsCount = state.records.filter((record) => record.recordType === "proof").length;
     const sommaCount = state.records.filter((record) => record.recordType === "bill" && record.sourceRuleId === "sommaInvoice").length;
@@ -1605,8 +1742,27 @@ async function syncSources() {
   } finally {
     state.isSyncing = false;
     els.syncButton.classList.remove("spinning");
-    renderConnectionStatus();
+    els.fabSyncButton?.classList.remove("spinning");
+    hideSkeletons();
+    render();
   }
+}
+
+function showSkeletons() {
+  document.querySelectorAll(".metric-card").forEach((card) => card.classList.add("is-loading"));
+  if (els.recordsBody) {
+    els.recordsBody.innerHTML = Array.from({ length: 6 })
+      .map(
+        () =>
+          '<tr class="skeleton-row"><td colspan="6"><span class="skeleton title"></span><span class="skeleton sub"></span></td></tr>',
+      )
+      .join("");
+  }
+  if (els.emptyState) els.emptyState.hidden = true;
+}
+
+function hideSkeletons() {
+  document.querySelectorAll(".metric-card.is-loading").forEach((card) => card.classList.remove("is-loading"));
 }
 
 async function persistRecordsToFirebase(records, previousRecordIds = new Set()) {
@@ -3283,6 +3439,7 @@ function render() {
 
 function selectDashboard(view) {
   state.activeDashboard = view === "nubank" ? "nubank" : "household";
+  saveViewPrefs();
   renderDashboardNavigation();
   if (state.activeDashboard === "nubank") renderNubankDashboard();
   renderCharts();
@@ -3358,6 +3515,7 @@ function selectMonth(monthKey) {
   if (!monthKey) return;
   state.selectedMonth = monthKey;
   state.filters.recordIds = [];
+  saveViewPrefs();
   render();
 }
 
@@ -3487,6 +3645,15 @@ function renderConnectionStatus(message, level = "") {
   els.lastSyncLabel.textContent = state.config.lastSyncAt
     ? `Última sync: ${formatDateTime(state.config.lastSyncAt)}`
     : "Aguardando sincronização";
+
+  applyDotAccessibility(els.googleDot, els.googleStatus.textContent);
+  applyDotAccessibility(els.firebaseDot, els.firebaseStatus.textContent);
+}
+
+function applyDotAccessibility(dot, label) {
+  if (!dot) return;
+  dot.setAttribute("role", "img");
+  dot.setAttribute("aria-label", label);
 }
 
 function getMonthRecords({ includeProofs = true } = {}) {
@@ -3621,7 +3788,7 @@ function renderEvolutionChart() {
           label: "Total",
           data: totals,
           backgroundColor: "rgba(22, 131, 110, 0.25)",
-          borderColor: "#16836e",
+          borderColor: themeColor("--teal", "#16836e"),
           borderWidth: 1,
           borderRadius: 6,
         },
@@ -3629,8 +3796,8 @@ function renderEvolutionChart() {
           type: "line",
           label: "Pago",
           data: paid,
-          borderColor: "#356ac3",
-          backgroundColor: "#356ac3",
+          borderColor: themeColor("--blue", "#356ac3"),
+          backgroundColor: themeColor("--blue", "#356ac3"),
           borderWidth: 3,
           tension: 0.35,
           pointRadius: 3,
@@ -3711,8 +3878,10 @@ function renderCategoryChart() {
       datasets: [
         {
           data: values,
-          backgroundColor: labels.map((_, index) => (isEmpty ? "#d8e3df" : COLOR_SET[index % COLOR_SET.length])),
-          borderColor: "#ffffff",
+          backgroundColor: labels.map((_, index) =>
+            isEmpty ? themeColor("--line", "#d8e3df") : COLOR_SET[index % COLOR_SET.length],
+          ),
+          borderColor: themeColor("--surface", "#ffffff"),
           borderWidth: 3,
         },
       ],
@@ -3954,7 +4123,7 @@ function renderNubankCategoryChart(transactions) {
         {
           data: values,
           backgroundColor: labels.map((_, index) => (categories.length ? NUBANK_COLOR_SET[index % NUBANK_COLOR_SET.length] : "#e5d8ee")),
-          borderColor: "#ffffff",
+          borderColor: themeColor("--surface", "#ffffff"),
           borderWidth: 3,
         },
       ],
@@ -3975,11 +4144,13 @@ function renderNubankCategoryChart(transactions) {
 
 function chartBaseOptions(extra = {}) {
   const mobile = window.matchMedia("(max-width: 760px)").matches;
+  const tickColor = themeColor("--muted", "#64736d");
+  const gridColor = themeColor("--line", "rgba(100, 115, 109, 0.16)");
   const baseScales = {
     x: {
       grid: { display: false },
       ticks: {
-        color: "#64736d",
+        color: tickColor,
         font: { weight: 700, size: mobile ? 10 : 12 },
         autoSkip: true,
         maxTicksLimit: mobile ? 6 : 12,
@@ -3989,8 +4160,8 @@ function chartBaseOptions(extra = {}) {
     },
     y: {
       beginAtZero: true,
-      grid: { color: "rgba(100, 115, 109, 0.16)" },
-      ticks: { color: "#64736d", font: { size: mobile ? 10 : 12 }, maxTicksLimit: mobile ? 6 : 11 },
+      grid: { color: gridColor },
+      ticks: { color: tickColor, font: { size: mobile ? 10 : 12 }, maxTicksLimit: mobile ? 6 : 11 },
     },
   };
   const mergedScales =
@@ -4022,7 +4193,7 @@ function chartBaseOptions(extra = {}) {
           boxWidth: 12,
           boxHeight: 12,
           usePointStyle: true,
-          color: "#64736d",
+          color: tickColor,
           font: { weight: 700, size: mobile ? 10 : 12 },
         },
       },
@@ -4043,7 +4214,7 @@ function chartBaseOptions(extra = {}) {
             boxWidth: 12,
             boxHeight: 12,
             usePointStyle: true,
-            color: "#64736d",
+            color: tickColor,
             font: { weight: 700, size: mobile ? 10 : 12 },
           },
         },
@@ -4551,8 +4722,12 @@ function getRecordDisplayName(record = {}) {
 function openDetail(recordId) {
   const record = getEffectiveRecords().find((item) => item.id === recordId);
   if (!record) return;
-
   state.selectedRecordId = recordId;
+  renderDetail(record);
+  els.detailDialog.showModal();
+}
+
+function renderDetail(record) {
   els.editManualAccountButton.hidden = !isManualRecord(record);
   const statusForBadge = record.recordType === "proof" ? "proof" : record.status;
 
@@ -4569,8 +4744,90 @@ function openDetail(recordId) {
   els.detailSources.innerHTML = renderSources(record);
   els.detailEvidence.textContent = record.evidence || "Sem trecho extraído.";
   els.detailProofs.innerHTML = renderProofs(record.sources || []);
-  els.detailDialog.showModal();
+  renderDetailActions(record);
   window.lucide?.createIcons();
+}
+
+function renderDetailActions(record) {
+  // Comprovantes não têm ações de status/categoria.
+  const isProof = record.recordType === "proof";
+  els.detailActions.hidden = isProof;
+  if (isProof) return;
+
+  const isPaid = record.status === "paid";
+  els.detailTogglePaidButton.classList.toggle("is-paid", isPaid);
+  els.detailTogglePaidButton.innerHTML = `<i data-lucide="${isPaid ? "rotate-ccw" : "check-circle-2"}"></i><span>${isPaid ? "Reabrir conta" : "Marcar como pago"}</span>`;
+
+  const categories = getKnownCategories(record.category);
+  els.detailCategorySelect.innerHTML = categories
+    .map((category) => `<option value="${escapeAttribute(category)}" ${category === record.category ? "selected" : ""}>${escapeHtml(category)}</option>`)
+    .join("");
+
+  const override = state.overrides[record.id] || {};
+  const hasManualEdit = Boolean(override.status || override.category || override.dueDate || override.title || override.amountOverride);
+  els.detailRevertButton.hidden = !hasManualEdit;
+  els.detailOverrideNote.hidden = !hasManualEdit;
+}
+
+function getKnownCategories(current) {
+  const categories = new Set();
+  getEffectiveRecords().forEach((record) => {
+    if (record.category) categories.add(record.category);
+  });
+  state.standardAccounts.forEach((account) => {
+    if (account.category) categories.add(account.category);
+  });
+  if (current) categories.add(current);
+  return Array.from(categories).sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+async function setRecordOverride(recordId, patch, { message } = {}) {
+  const next = { ...(state.overrides[recordId] || {}), ...patch };
+  state.overrides[recordId] = next;
+  writeJSON(OVERRIDES_KEY, state.overrides);
+  render();
+  const updated = getEffectiveRecords().find((item) => item.id === recordId);
+  if (updated && els.detailDialog.open && state.selectedRecordId === recordId) renderDetail(updated);
+  if (message) showToast(message);
+  try {
+    await persistOverrideToFirebase(recordId, next);
+  } catch (error) {
+    showToast(`Não foi possível salvar a alteração: ${error.message}`);
+  }
+}
+
+function toggleDetailPaid() {
+  const record = getEffectiveRecords().find((item) => item.id === state.selectedRecordId);
+  if (!record) return;
+  const markPaid = record.status !== "paid";
+  setRecordOverride(record.id, { status: markPaid ? "paid" : "open" }, {
+    message: markPaid ? "Conta marcada como paga." : "Conta reaberta.",
+  });
+}
+
+function changeDetailCategory() {
+  const value = els.detailCategorySelect.value;
+  const record = getEffectiveRecords().find((item) => item.id === state.selectedRecordId);
+  if (!record || !value || value === record.category) return;
+  setRecordOverride(record.id, { category: value }, { message: `Categoria alterada para "${value}".` });
+}
+
+function revertDetailOverride() {
+  const recordId = state.selectedRecordId;
+  const existing = state.overrides[recordId];
+  if (!existing) return;
+  // Mantém apenas a flag de exclusão (se existir); descarta os ajustes de conteúdo.
+  if (existing.deleted) {
+    state.overrides[recordId] = { deleted: existing.deleted, deletedAt: existing.deletedAt };
+  } else {
+    delete state.overrides[recordId];
+  }
+  writeJSON(OVERRIDES_KEY, state.overrides);
+  render();
+  const updated = getEffectiveRecords().find((item) => item.id === recordId);
+  if (updated && els.detailDialog.open) renderDetail(updated);
+  showToast("Ajustes revertidos.");
+  persistOverrideToFirebase(recordId, state.overrides[recordId] || {}).catch(() => undefined);
 }
 
 function renderAttachments(record) {
