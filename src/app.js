@@ -3,7 +3,8 @@ const RECORDS_KEY = "contasDomesticas.records.v1";
 const DRIVE_KEY = "contasDomesticas.drive.v1";
 const OVERRIDES_KEY = "contasDomesticas.overrides.v1";
 const STANDARD_ACCOUNTS_KEY = "contasDomesticas.standardAccounts.v1";
-const APP_VERSION = "20260610-27";
+const THEME_KEY = "contas-theme";
+const APP_VERSION = "20260611-1";
 const MANUAL_RECURRENCE_HORIZON_MONTHS = 36;
 
 const GOOGLE_SCOPES = [
@@ -166,6 +167,9 @@ const SERVICE_NOTICE_REGEX =
 const els = {
   monthSelect: document.querySelector("#monthSelect"),
   syncButton: document.querySelector("#syncButton"),
+  fabSyncButton: document.querySelector("#fabSyncButton"),
+  themeToggleButton: document.querySelector("#themeToggleButton"),
+  pullIndicator: document.querySelector("#pullIndicator"),
   exportButton: document.querySelector("#exportButton"),
   auditToggleButton: document.querySelector("#auditToggleButton"),
   allRecordsButton: document.querySelector("#allRecordsButton"),
@@ -354,17 +358,120 @@ init();
 function init() {
   document.documentElement.dataset.appVersion = APP_VERSION;
   console.info(`Dashboard Contas ${APP_VERSION}`);
+  setupTheme();
   populateSettingsForm();
   populateManualAccountForm();
   bindEvents();
+  setupPullToRefresh();
+  registerServiceWorker();
   connectFirebaseFromConfig();
   render();
   window.lucide?.createIcons();
 }
 
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  if (location.protocol !== "https:" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch((error) => {
+      console.warn("Service worker não registrado:", error.message);
+    });
+  });
+}
+
+function setupTheme() {
+  const stored = localStorage.getItem(THEME_KEY);
+  const theme = stored === "light" || stored === "dark" ? stored : document.documentElement.dataset.theme || "light";
+  applyTheme(theme);
+}
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  const meta = document.querySelector('meta[name="theme-color"]:not([media])') || null;
+  if (meta) meta.setAttribute("content", theme === "dark" ? "#0f1714" : "#16836e");
+  if (els.themeToggleButton) {
+    els.themeToggleButton.setAttribute("aria-pressed", String(theme === "dark"));
+  }
+}
+
+function toggleTheme() {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
+  renderCharts();
+}
+
+function themeColor(name, fallback = "#64736d") {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+function setupPullToRefresh() {
+  const indicator = els.pullIndicator;
+  if (!indicator) return;
+  const scroller = document.scrollingElement || document.documentElement;
+  const THRESHOLD = 70;
+  let startY = 0;
+  let distance = 0;
+  let pulling = false;
+
+  const reset = () => {
+    pulling = false;
+    distance = 0;
+    indicator.classList.remove("armed", "refreshing");
+    indicator.style.opacity = "0";
+    indicator.style.transform = "translateY(-60px)";
+  };
+
+  window.addEventListener(
+    "touchstart",
+    (event) => {
+      if (state.isSyncing || event.touches.length !== 1 || scroller.scrollTop > 0) return;
+      startY = event.touches[0].clientY;
+      distance = 0;
+      pulling = true;
+    },
+    { passive: true },
+  );
+
+  window.addEventListener(
+    "touchmove",
+    (event) => {
+      if (!pulling) return;
+      distance = event.touches[0].clientY - startY;
+      if (distance <= 0 || scroller.scrollTop > 0) {
+        reset();
+        return;
+      }
+      const pull = Math.min(distance, 110);
+      indicator.style.opacity = String(Math.min(pull / THRESHOLD, 1));
+      indicator.style.transform = `translateY(${Math.min(pull - 60, 14)}px)`;
+      indicator.classList.toggle("armed", pull >= THRESHOLD);
+    },
+    { passive: true },
+  );
+
+  window.addEventListener("touchend", () => {
+    if (!pulling) return;
+    const shouldRefresh = distance >= THRESHOLD;
+    pulling = false;
+    if (shouldRefresh && !state.isSyncing) {
+      indicator.classList.remove("armed");
+      indicator.classList.add("refreshing");
+      indicator.style.opacity = "1";
+      indicator.style.transform = "translateY(14px)";
+      Promise.resolve(syncSources()).finally(reset);
+    } else {
+      reset();
+    }
+  });
+}
+
 function bindEvents() {
   window.matchMedia("(max-width: 760px)").addEventListener("change", renderCharts);
   els.syncButton.addEventListener("click", syncSources);
+  els.fabSyncButton?.addEventListener("click", syncSources);
+  els.themeToggleButton?.addEventListener("click", toggleTheme);
   els.exportButton.addEventListener("click", exportCurrentCsv);
   els.auditToggleButton.addEventListener("click", toggleAuditPanel);
   els.allRecordsButton.addEventListener("click", openAllRecords);
@@ -1509,6 +1616,8 @@ async function syncSources() {
 
   state.isSyncing = true;
   els.syncButton.classList.add("spinning");
+  els.fabSyncButton?.classList.add("spinning");
+  showSkeletons();
   renderConnectionStatus("Sincronizando Google...", "warn");
 
   try {
@@ -1529,7 +1638,6 @@ async function syncSources() {
     writeJSON(DRIVE_KEY, state.driveFiles);
     writeJSON(CONFIG_KEY, state.config);
     await persistRecordsToFirebase(state.records, previousRecordIds);
-    render();
     const billsCount = state.records.filter((record) => record.recordType === "bill").length;
     const proofsCount = state.records.filter((record) => record.recordType === "proof").length;
     const sommaCount = state.records.filter((record) => record.recordType === "bill" && record.sourceRuleId === "sommaInvoice").length;
@@ -1540,8 +1648,27 @@ async function syncSources() {
   } finally {
     state.isSyncing = false;
     els.syncButton.classList.remove("spinning");
-    renderConnectionStatus();
+    els.fabSyncButton?.classList.remove("spinning");
+    hideSkeletons();
+    render();
   }
+}
+
+function showSkeletons() {
+  document.querySelectorAll(".metric-card").forEach((card) => card.classList.add("is-loading"));
+  if (els.recordsBody) {
+    els.recordsBody.innerHTML = Array.from({ length: 6 })
+      .map(
+        () =>
+          '<tr class="skeleton-row"><td colspan="6"><span class="skeleton title"></span><span class="skeleton sub"></span></td></tr>',
+      )
+      .join("");
+  }
+  if (els.emptyState) els.emptyState.hidden = true;
+}
+
+function hideSkeletons() {
+  document.querySelectorAll(".metric-card.is-loading").forEach((card) => card.classList.remove("is-loading"));
 }
 
 async function persistRecordsToFirebase(records, previousRecordIds = new Set()) {
@@ -3274,6 +3401,15 @@ function renderConnectionStatus(message, level = "") {
   els.lastSyncLabel.textContent = state.config.lastSyncAt
     ? `Última sync: ${formatDateTime(state.config.lastSyncAt)}`
     : "Aguardando sincronização";
+
+  applyDotAccessibility(els.googleDot, els.googleStatus.textContent);
+  applyDotAccessibility(els.firebaseDot, els.firebaseStatus.textContent);
+}
+
+function applyDotAccessibility(dot, label) {
+  if (!dot) return;
+  dot.setAttribute("role", "img");
+  dot.setAttribute("aria-label", label);
 }
 
 function getMonthRecords({ includeProofs = true } = {}) {
@@ -3404,7 +3540,7 @@ function renderEvolutionChart() {
           label: "Total",
           data: totals,
           backgroundColor: "rgba(22, 131, 110, 0.25)",
-          borderColor: "#16836e",
+          borderColor: themeColor("--teal", "#16836e"),
           borderWidth: 1,
           borderRadius: 6,
         },
@@ -3412,8 +3548,8 @@ function renderEvolutionChart() {
           type: "line",
           label: "Pago",
           data: paid,
-          borderColor: "#356ac3",
-          backgroundColor: "#356ac3",
+          borderColor: themeColor("--blue", "#356ac3"),
+          backgroundColor: themeColor("--blue", "#356ac3"),
           borderWidth: 3,
           tension: 0.35,
           pointRadius: 3,
@@ -3494,8 +3630,10 @@ function renderCategoryChart() {
       datasets: [
         {
           data: values,
-          backgroundColor: labels.map((_, index) => (isEmpty ? "#d8e3df" : COLOR_SET[index % COLOR_SET.length])),
-          borderColor: "#ffffff",
+          backgroundColor: labels.map((_, index) =>
+            isEmpty ? themeColor("--line", "#d8e3df") : COLOR_SET[index % COLOR_SET.length],
+          ),
+          borderColor: themeColor("--surface", "#ffffff"),
           borderWidth: 3,
         },
       ],
@@ -3530,11 +3668,13 @@ function renderCategoryChart() {
 
 function chartBaseOptions(extra = {}) {
   const mobile = window.matchMedia("(max-width: 760px)").matches;
+  const tickColor = themeColor("--muted", "#64736d");
+  const gridColor = themeColor("--line", "rgba(100, 115, 109, 0.16)");
   const baseScales = {
     x: {
       grid: { display: false },
       ticks: {
-        color: "#64736d",
+        color: tickColor,
         font: { weight: 700, size: mobile ? 10 : 12 },
         autoSkip: true,
         maxTicksLimit: mobile ? 6 : 12,
@@ -3544,8 +3684,8 @@ function chartBaseOptions(extra = {}) {
     },
     y: {
       beginAtZero: true,
-      grid: { color: "rgba(100, 115, 109, 0.16)" },
-      ticks: { color: "#64736d", font: { size: mobile ? 10 : 12 }, maxTicksLimit: mobile ? 6 : 11 },
+      grid: { color: gridColor },
+      ticks: { color: tickColor, font: { size: mobile ? 10 : 12 }, maxTicksLimit: mobile ? 6 : 11 },
     },
   };
   const mergedScales =
@@ -3577,7 +3717,7 @@ function chartBaseOptions(extra = {}) {
           boxWidth: 12,
           boxHeight: 12,
           usePointStyle: true,
-          color: "#64736d",
+          color: tickColor,
           font: { weight: 700, size: mobile ? 10 : 12 },
         },
       },
@@ -3598,7 +3738,7 @@ function chartBaseOptions(extra = {}) {
             boxWidth: 12,
             boxHeight: 12,
             usePointStyle: true,
-            color: "#64736d",
+            color: tickColor,
             font: { weight: 700, size: mobile ? 10 : 12 },
           },
         },
