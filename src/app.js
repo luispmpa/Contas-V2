@@ -5,7 +5,7 @@ const OVERRIDES_KEY = "contasDomesticas.overrides.v1";
 const STANDARD_ACCOUNTS_KEY = "contasDomesticas.standardAccounts.v1";
 const VIEW_KEY = "contasDomesticas.view.v1";
 const THEME_KEY = "contas-theme";
-const APP_VERSION = "20260611-32";
+const APP_VERSION = "20260611-33";
 const MANUAL_RECURRENCE_HORIZON_MONTHS = 36;
 
 const GOOGLE_SCOPES = [
@@ -453,11 +453,12 @@ function init() {
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
-  if (location.protocol !== "https:" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch((error) => {
-      console.warn("Service worker não registrado:", error.message);
-    });
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+      .then(() => ("caches" in window ? caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key)))) : undefined))
+      .catch((error) => console.warn("Cache offline não removido:", error.message));
   });
 }
 

@@ -160,5 +160,6 @@ O submenu `Nubank` é alimentado automaticamente durante a sincronização do Gm
 - Permite alternar o gráfico entre gastos dentro da fatura e evolução mensal, comparando o valor final com o valor efetivamente pago.
 - Permite ordenar a tabela também clicando diretamente nos cabeçalhos das colunas.
 - Salva as transações junto ao registro da fatura no cache local e no Firestore.
+- O GitHub Pages não usa cache offline persistente, garantindo que a versão atual do branch `main` seja carregada após uma atualização.
 
 Não é necessário importar arquivos manualmente. Após a primeira atualização desta funcionalidade, execute `Sincronizar` para reprocessar as faturas já encontradas no período configurado.
