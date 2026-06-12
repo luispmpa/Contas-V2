@@ -164,3 +164,10 @@ O submenu `Nubank` é alimentado automaticamente durante a sincronização do Gm
 - Concilia o valor final de cada fatura mostrando separadamente compras brutas e ajustes líquidos, como créditos, abatimentos, saldos e encargos.
 
 Não é necessário importar arquivos manualmente. Após a primeira atualização desta funcionalidade, execute `Sincronizar` para reprocessar as faturas já encontradas no período configurado.
+
+## Desempenho da sincronização
+
+- Ao abrir, o dashboard usa imediatamente o cache local e os registros já armazenados no Firestore.
+- O botão `Sincronizar` faz uma busca incremental, processando apenas e-mails e arquivos novos ou alterados, com três dias de sobreposição.
+- Use `Shift + clique` em `Sincronizar` para executar uma leitura completa do período configurado.
+- Os registros antigos permanecem armazenados no Firestore e são mesclados com as novidades.

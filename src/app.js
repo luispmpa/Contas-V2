@@ -5,8 +5,9 @@ const OVERRIDES_KEY = "contasDomesticas.overrides.v1";
 const STANDARD_ACCOUNTS_KEY = "contasDomesticas.standardAccounts.v1";
 const VIEW_KEY = "contasDomesticas.view.v1";
 const THEME_KEY = "contas-theme";
-const APP_VERSION = "20260612-1";
+const APP_VERSION = "20260612-2";
 const MANUAL_RECURRENCE_HORIZON_MONTHS = 36;
+const INCREMENTAL_SYNC_OVERLAP_DAYS = 3;
 
 const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
@@ -555,8 +556,8 @@ function bindEvents() {
   els.dashboardNavButtons.forEach((button) => {
     button.addEventListener("click", () => selectDashboard(button.dataset.dashboardView));
   });
-  els.syncButton.addEventListener("click", syncSources);
-  els.fabSyncButton?.addEventListener("click", syncSources);
+  els.syncButton.addEventListener("click", (event) => syncSources({ full: event.shiftKey }));
+  els.fabSyncButton?.addEventListener("click", (event) => syncSources({ full: event.shiftKey }));
   els.themeToggleButton?.addEventListener("click", toggleTheme);
   els.exportButton.addEventListener("click", exportCurrentCsv);
   els.auditToggleButton.addEventListener("click", toggleAuditPanel);
@@ -1235,7 +1236,7 @@ async function saveNewExtractionRule() {
     els.settingsDialog.close();
     render();
     showToast("Regra adicionada. Iniciando sincronização completa...");
-    await syncSources();
+    await syncSources({ full: true });
   } finally {
     els.saveNewRuleButton.disabled = false;
   }
@@ -1249,7 +1250,7 @@ async function deleteCustomExtractionRule(ruleId) {
   populateExtractionRuleFields();
   showToast("Regra removida. Sincronizando novamente...");
   els.settingsDialog.close();
-  await syncSources();
+  await syncSources({ full: true });
 }
 
 async function saveManualAccount() {
@@ -1679,6 +1680,11 @@ function startFirebaseListeners() {
         if (invalidIds.length) deleteRecordsFromFirebase(invalidIds);
 
         state.records = sanitizedRecords.filter((record) => !state.overrides[record.id]?.deleted);
+        const latestRecordUpdate = state.records.map((record) => record.updatedAt).filter(Boolean).sort().at(-1);
+        if (latestRecordUpdate && (!state.config.lastSyncAt || latestRecordUpdate > state.config.lastSyncAt)) {
+          state.config.lastSyncAt = latestRecordUpdate;
+          writeJSON(CONFIG_KEY, state.config);
+        }
         writeJSON(RECORDS_KEY, state.records);
         render();
       },
@@ -1744,7 +1750,7 @@ function stripFirestoreMeta(value) {
   return copy;
 }
 
-async function syncSources() {
+async function syncSources({ full = false } = {}) {
   if (state.isSyncing) return;
 
   if (!state.config.googleClientId && !state.firebase) {
@@ -1757,31 +1763,43 @@ async function syncSources() {
   els.syncButton.classList.add("spinning");
   els.fabSyncButton?.classList.add("spinning");
   showSkeletons();
-  renderConnectionStatus("Sincronizando Google...", "warn");
+  const incrementalSince = full ? "" : getIncrementalSyncSince();
+  const syncMode = incrementalSince ? "incremental" : "completa";
+  renderConnectionStatus(`Sincronização ${syncMode}...`, "warn");
 
   try {
     const previousRecordIds = new Set(state.records.map((record) => record.id).filter(Boolean));
+    const previousRecordsById = new Map(state.records.map((record) => [record.id, record]));
     const manualRecords = state.records.filter((record) => isManualRecord(record) && !state.overrides[record.id]?.deleted);
     await requestGoogleToken();
-    const [gmailRecords, driveFiles] = await Promise.all([fetchGmailRecords(), fetchDriveFiles()]);
+    const [gmailRecords, driveFiles] = await Promise.all([
+      fetchGmailRecords({ since: incrementalSince }),
+      fetchDriveFiles({ since: incrementalSince }),
+    ]);
     const driveRecords = buildDriveRecords(driveFiles);
-    const records = attachProofs([...gmailRecords, ...driveRecords]);
+    const baseRecords = incrementalSince ? state.records : manualRecords;
+    const records = attachProofs(dedupeRecords([...gmailRecords, ...driveRecords, ...baseRecords]));
 
-    state.records = sanitizeRecordList(dedupeRecords([...records, ...manualRecords]), { includeProofs: true }).filter(
+    state.records = sanitizeRecordList(records, { includeProofs: true }).filter(
       (record) => !state.overrides[record.id]?.deleted,
     );
-    state.driveFiles = driveFiles;
+    state.driveFiles = incrementalSince ? mergeDriveFiles(state.driveFiles, driveFiles) : driveFiles;
     state.config.lastSyncAt = new Date().toISOString();
     state.filters.recordIds = [];
     writeJSON(RECORDS_KEY, state.records);
     writeJSON(DRIVE_KEY, state.driveFiles);
     writeJSON(CONFIG_KEY, state.config);
-    await persistRecordsToFirebase(state.records, previousRecordIds);
+    const recordsToPersist = incrementalSince
+      ? state.records.filter((record) => recordSyncFingerprint(record) !== recordSyncFingerprint(previousRecordsById.get(record.id)))
+      : state.records;
+    await persistRecordsToFirebase(state.records, previousRecordIds, { recordsToWrite: recordsToPersist });
     const billsCount = state.records.filter((record) => record.recordType === "bill").length;
     const proofsCount = state.records.filter((record) => record.recordType === "proof").length;
     const sommaCount = state.records.filter((record) => record.recordType === "bill" && record.sourceRuleId === "sommaInvoice").length;
     const nubankTransactionCount = state.records.reduce((count, record) => count + (record.nubankTransactions?.length || 0), 0);
-    showToast(`Sincronização concluída: ${billsCount} contas, ${nubankTransactionCount} compras Nubank, Somma: ${sommaCount}, ${proofsCount} comprovantes não conciliados e ${state.driveFiles.length} arquivos do Drive.`);
+    showToast(
+      `Sincronização ${syncMode} concluída: ${gmailRecords.length} e-mails, ${driveFiles.length} arquivos e ${recordsToPersist.length} registros atualizados · ${billsCount} contas, ${nubankTransactionCount} compras Nubank, Somma: ${sommaCount} e ${proofsCount} comprovantes não conciliados.`,
+    );
   } catch (error) {
     renderConnectionStatus(`Google: ${error.message}`, "bad");
     showToast(error.message);
@@ -1811,7 +1829,7 @@ function hideSkeletons() {
   document.querySelectorAll(".metric-card.is-loading").forEach((card) => card.classList.remove("is-loading"));
 }
 
-async function persistRecordsToFirebase(records, previousRecordIds = new Set()) {
+async function persistRecordsToFirebase(records, previousRecordIds = new Set(), { recordsToWrite = records } = {}) {
   if (!state.firebase || !state.firebaseUser) return;
   const { db, doc, setDoc, deleteDoc, serverTimestamp } = state.firebase;
   const activeRecords = records.filter((record) => !state.overrides[record.id]?.deleted);
@@ -1819,13 +1837,20 @@ async function persistRecordsToFirebase(records, previousRecordIds = new Set()) 
   const staleRecordIds = Array.from(previousRecordIds).filter((id) => !nextRecordIds.has(id));
   await Promise.all([
     ...staleRecordIds.map((id) => deleteDoc(doc(db, "householdDashboards", state.config.firebaseProfileId, "records", id))),
-    ...activeRecords.map((record) =>
+    ...recordsToWrite.filter((record) => !state.overrides[record.id]?.deleted).map((record) =>
       setDoc(doc(db, "householdDashboards", state.config.firebaseProfileId, "records", record.id), {
         ...record,
         syncedAt: serverTimestamp(),
       }),
     ),
   ]);
+}
+
+function recordSyncFingerprint(record) {
+  if (!record) return "";
+  const copy = { ...record };
+  delete copy.syncedAt;
+  return JSON.stringify(copy);
 }
 
 async function persistSingleRecordToFirebase(record) {
@@ -1916,7 +1941,7 @@ async function requestFirebaseGoogleToken() {
   return state.googleAccessToken;
 }
 
-async function fetchGmailRecords() {
+async function fetchGmailRecords({ since = "" } = {}) {
   const labels = await googleFetch("gmail/v1/users/me/labels");
   const label = labels.labels?.find((item) => item.name.toLowerCase() === state.config.gmailLabelName.toLowerCase());
 
@@ -1925,7 +1950,7 @@ async function fetchGmailRecords() {
   }
 
   const messageMap = new Map();
-  const baseQuery = `newer_than:${state.config.syncMonthsBack}m`;
+  const baseQuery = since ? `after:${formatGmailQueryDate(since)}` : `newer_than:${state.config.syncMonthsBack}m`;
   const searches = [
     { labelIds: label.id, q: baseQuery },
     ...Object.values(normalizeExtractionRules(state.config.extractionRules))
@@ -1961,6 +1986,12 @@ async function fetchGmailRecords() {
 
   const parsedMessages = await mapLimit(fullMessages, 3, parseGmailMessageSafely);
   return parsedMessages.filter(Boolean);
+}
+
+function formatGmailQueryDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getUTCFullYear()}/${String(date.getUTCMonth() + 1).padStart(2, "0")}/${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
 async function parseGmailMessageSafely(message) {
@@ -2019,10 +2050,16 @@ function buildGmailFallbackRecord(message) {
   };
 }
 
-async function fetchDriveFiles() {
+async function fetchDriveFiles({ since = "" } = {}) {
   const files = [];
   let pageToken = "";
-  const query = `'${state.config.driveFolderId}' in parents and trashed = false`;
+  const query = [
+    `'${state.config.driveFolderId}' in parents`,
+    "trashed = false",
+    since ? `modifiedTime > '${new Date(since).toISOString()}'` : "",
+  ]
+    .filter(Boolean)
+    .join(" and ");
 
   do {
     const page = await googleFetch("drive/v3/files", {
@@ -2743,6 +2780,19 @@ function mergeSources(existing, additions) {
   return Array.from(byKey.values());
 }
 
+function mergeAttachments(existing = [], additions = []) {
+  const byKey = new Map();
+  [...existing, ...additions].forEach((attachment) => {
+    const key = `${attachment.messageId || ""}-${attachment.attachmentId || attachment.id || ""}-${attachment.fileName || attachment.name || ""}`;
+    byKey.set(key, attachment);
+  });
+  return Array.from(byKey.values());
+}
+
+function mergeEvidence(existing, addition) {
+  return Array.from(new Set([existing, addition].filter(Boolean))).join("\n\n");
+}
+
 function tokenOverlap(a, b) {
   const tokensA = new Set(normalizeText(a).split(/\s+/).filter((token) => token.length >= 4));
   const tokensB = new Set(normalizeText(b).split(/\s+/).filter((token) => token.length >= 4));
@@ -2784,8 +2834,8 @@ function dedupeRecords(records) {
       amountConfirmed: existing.amountConfirmed || record.amountConfirmed,
       sourceTypes: Array.from(new Set([...existing.sourceTypes, ...record.sourceTypes])),
       sources: mergeSources(existing.sources, record.sources),
-      attachments: [...(existing.attachments || []), ...(record.attachments || [])],
-      evidence: [existing.evidence, record.evidence].filter(Boolean).join("\n\n"),
+      attachments: mergeAttachments(existing.attachments, record.attachments),
+      evidence: mergeEvidence(existing.evidence, record.evidence),
     });
   });
   return Array.from(seen.values()).sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""));
@@ -4361,6 +4411,21 @@ function renderNubankEvolutionChart() {
   }
 }
 
+function getIncrementalSyncSince() {
+  const candidates = [
+    state.config.lastSyncAt,
+    ...state.records.map((record) => record.updatedAt),
+    ...state.driveFiles.map((file) => file.modifiedTime || file.createdTime),
+  ]
+    .filter(Boolean)
+    .map((value) => new Date(value))
+    .filter((date) => !Number.isNaN(date.getTime()));
+  if (!candidates.length) return "";
+  const latest = new Date(Math.max(...candidates.map((date) => date.getTime())));
+  latest.setDate(latest.getDate() - INCREMENTAL_SYNC_OVERLAP_DAYS);
+  return latest.toISOString();
+}
+
 function renderNubankDailyChart(transactions) {
   const daily = aggregateNubankTransactions(transactions, "date").sort((a, b) => a.label.localeCompare(b.label));
   const labels = daily.length ? daily.map((item) => formatDate(item.label).slice(0, 5)) : ["Sem dados"];
@@ -4389,6 +4454,12 @@ function renderNubankDailyChart(transactions) {
       },
     }),
   });
+}
+
+function mergeDriveFiles(existing, additions) {
+  const byId = new Map((existing || []).map((file) => [file.id, file]));
+  (additions || []).forEach((file) => byId.set(file.id, file));
+  return Array.from(byId.values());
 }
 
 function renderNubankMonthlyChart() {

@@ -1,6 +1,6 @@
 // O dashboard deixou de usar cache offline para que o GitHub Pages sempre
 // carregue exatamente a versão atual do branch main.
-const VERSION = "20260612-1";
+const VERSION = "20260612-2";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
