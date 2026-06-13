@@ -1674,12 +1674,18 @@ function startFirebaseListeners() {
           ...stripFirestoreMeta(docSnap.data()),
         }));
         const sanitizedRecords = sanitizeRecordList(rawRecords, { includeProofs: true });
+        const dedupedRecords = dedupeRecords(sanitizedRecords);
         const sanitizedIds = new Set(sanitizedRecords.map((record) => record.id));
+        const keptIds = new Set(dedupedRecords.map((record) => record.id));
         const invalidIds = rawRecords.map((record) => record.id).filter((id) => !sanitizedIds.has(id));
+        // Registros duplicados já persistidos no Firestore (ex.: IPTU puxado 2x) são unificados
+        // ao carregar e os documentos redundantes são removidos para não voltarem a aparecer.
+        const duplicateIds = sanitizedRecords.map((record) => record.id).filter((id) => !keptIds.has(id));
+        const removableIds = Array.from(new Set([...invalidIds, ...duplicateIds]));
 
-        if (invalidIds.length) deleteRecordsFromFirebase(invalidIds);
+        if (removableIds.length) deleteRecordsFromFirebase(removableIds);
 
-        state.records = sanitizedRecords.filter((record) => !state.overrides[record.id]?.deleted);
+        state.records = dedupedRecords.filter((record) => !state.overrides[record.id]?.deleted);
         const latestRecordUpdate = state.records.map((record) => record.updatedAt).filter(Boolean).sort().at(-1);
         if (latestRecordUpdate && (!state.config.lastSyncAt || latestRecordUpdate > state.config.lastSyncAt)) {
           state.config.lastSyncAt = latestRecordUpdate;
@@ -2816,13 +2822,24 @@ function daysBetween(a, b) {
   return Math.abs(dateA.getTime() - dateB.getTime()) / 86400000;
 }
 
+function recordIdentityKey(record) {
+  // Registros gerados por uma regra de extração configurada (IPTU, Nubank, Somma, Claro...)
+  // chegam com o assunto do e-mail em record.title. Quando o mesmo boleto é enviado/reenviado
+  // em mensagens com assuntos ligeiramente diferentes, o título varia e a deduplicação falhava,
+  // duplicando a conta. Por isso ancoramos a identidade no id da regra, e não no assunto.
+  if (record.sourceRuleId) {
+    return `rule:${record.sourceRuleId}`;
+  }
+  return `title:${normalizeText(record.title)}`;
+}
+
 function dedupeRecords(records) {
   const seen = new Map();
   records.forEach((record) => {
     const amountCents = Math.round((record.amount || 0) * 100);
     const sourceKey = (record.sources || []).map((source) => source.id).filter(Boolean).join("-");
     const reviewKey = normalizeText([record.periodKey, record.installment, record.dueDate, sourceKey, record.createdAt].filter(Boolean).join(" "));
-    const key = `${record.recordType}-${normalizeText(record.title)}-${record.monthKey}-${amountCents || reviewKey}`;
+    const key = `${record.recordType}-${recordIdentityKey(record)}-${record.monthKey}-${amountCents || reviewKey}`;
     const existing = seen.get(key);
     if (!existing) {
       seen.set(key, record);
